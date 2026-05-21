@@ -261,7 +261,7 @@
         STORAGE_KEY: "akra_po_session_token"
     };
 
-    var DATA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxV3CUvZhxWYgNwDK3cMPClBB6ujuFQEkzhjP65CxEd6qLF46HbqXKlXWlhc7kn8F0/exec";
+    var DATA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw8SMnMPX9Cs7VDj-tkr-Vo9LTs4e2SEEg4OWr616VcM6Nz6IBWxRjxMPkBRG05yhA/exec";
     
     var appData = { prList: [], pendingPOs: [], grCompleted: [], apvList: [], vendors: [], products: [] };
     var groupedPOs = [];
@@ -663,29 +663,29 @@
             `;
             
             prs.forEach(pr => {
-                htmlStr += `
-                    <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm flex flex-col relative hover:border-brand-blue/30 transition hover:shadow-md">
-                        <div class="flex justify-between items-start mb-3">
-                            <span class="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">${pr.prNumber || 'PR'}</span>
-                            ${getWarehouseBadge(pr.warehouse)}
-                        </div>
-                        <p class="font-bold text-gray-800 text-base leading-tight mb-2">${pr.product}</p>
-                        <p class="text-brand-orange font-semibold text-sm mb-3">จำนวนขอ: <span class="text-lg">${pr.quantity}</span> <span class="text-xs">${pr.unit || ''}</span></p>
-                        
-                        <div class="bg-gray-50 p-3 rounded-lg text-[11px] text-gray-600 mb-4 border border-gray-100 flex-1">
-                            <p><span class="font-medium text-gray-700">ผู้ขอ:</span> ${pr.receiverName || 'พนักงาน'}</p>
-                            <p class="mt-1"><span class="font-medium text-gray-700">เหตุผล:</span> ${pr.remark || '-'}</p>
-                        </div>
-                        
-                        <div class="flex gap-1.5 mt-auto">
-                            <button onclick="rejectPR(${pr.rowNumber})" class="btn-outline-action btn-delete flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-red-200">ไม่อนุมัติ</button>
-                            <button onclick="closePRAsDirectPO(${pr.rowNumber})" class="btn-outline-action bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 flex-1 justify-center py-1.5 text-[11px] font-bold px-1">⚡ ซื้อให้แล้ว</button>
-                            <button onclick="approvePRToPOForm(${pr.rowNumber})" class="btn-outline-action btn-success flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-emerald-300">✅ เปิดบิล</button>
-                        </div>
-                    </div>
-                `;
+            htmlStr += `
+            <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm flex flex-col relative hover:border-brand-blue/30 transition hover:shadow-md">
+                <div class="flex justify-between items-start mb-3">
+                    <span class="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">${pr.prNumber || 'PR'}</span>
+                    ${getWarehouseBadge(pr.warehouse)}
+                </div>
+                <p class="font-bold text-gray-800 text-base leading-tight mb-2">${pr.product}</p>
+                <p class="text-brand-orange font-semibold text-sm mb-3">จำนวนขอ: <span class="text-lg">${pr.quantity}</span> <span class="text-xs">${pr.unit || ''}</span></p>
+
+                <div class="bg-gray-50 p-3 rounded-lg text-[11px] text-gray-600 mb-4 border border-gray-100 flex-1">
+                    <p><span class="font-medium text-gray-700">ผู้ขอ:</span> ${pr.receiverName || 'พนักงาน'}</p>
+                    <p class="mt-1"><span class="font-medium text-gray-700">เหตุผล:</span> ${pr.remark || '-'}</p>
+                </div>
+
+                <div class="flex gap-1.5 mt-auto">
+                    <button onclick="rejectPR(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-delete flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-red-200">ไม่อนุมัติ</button>
+                    <button onclick="closePRAsDirectPO(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 flex-1 justify-center py-1.5 text-[11px] font-bold px-1">⚡ ซื้อให้แล้ว</button>
+                    <button onclick="approvePRToPOForm(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-success flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-emerald-300">✅ เปิดบิล</button>
+                </div>
+
+            </div>
+            `;
             });
-            
             htmlStr += `
                 </div>
             </div>
@@ -696,21 +696,21 @@
         lucide.createIcons({ root: container });
     }
 
-    function rejectPR(rowNumber) {
+    function rejectPR(rowNumber, prUid) {
         showConfirmModal("คุณต้องการไม่อนุมัติคำขอนี้ใช่หรือไม่?", () => {
             const remark = prompt("ระบุเหตุผลที่ไม่อนุมัติคำขอนี้ (ถ้ามี):") || "ไม่อนุมัติ";
-            apiAction('rejectPR', { rowNumber: rowNumber, remark: `[ไม่อนุมัติ]: ${remark}` });
+            apiAction('rejectPR', { rowNumber: rowNumber, prUid: prUid, remark: `[ไม่อนุมัติ]: ${remark}` });
         });
     }
 
-    function closePRAsDirectPO(rowNumber) {
+    function closePRAsDirectPO(rowNumber, prUid) {
         showConfirmModal("ต้องการปิดคำขอนี้ เนื่องจาก 'จัดซื้อได้เปิดบิลสั่งซื้อให้เรียบร้อยแล้ว (Direct PO)' ใช่หรือไม่?", () => {
-            apiAction('rejectPR', { rowNumber: rowNumber, remark: `จัดซื้อดำเนินการสั่งซื้อให้เรียบร้อยแล้ว (Direct PO)`, status: 'ซื้อให้แล้ว' });
+            apiAction('rejectPR', { rowNumber: rowNumber, prUid: prUid, remark: `จัดซื้อดำเนินการสั่งซื้อให้เรียบร้อยแล้ว (Direct PO)`, status: 'ซื้อให้แล้ว' });
         });
     }
 
-    function approvePRToPOForm(rowNumber) {
-        const pr = appData.prList.find(p => p.rowNumber === rowNumber);
+    function approvePRToPOForm(rowNumber, prUid) {
+        const pr = appData.prList.find(p => p.uid === prUid || p.rowNumber === rowNumber);
         if(!pr) return;
 
         const vendorInput = document.getElementById('create-po-vendor');
@@ -719,6 +719,7 @@
         if (prodObj && prodObj.vendor) vendorInput.value = prodObj.vendor;
 
         document.getElementById('c-ref-pr-row').value = pr.rowNumber;
+        document.getElementById('form-create-po').dataset.pruid = pr.uid || ""; 
         document.getElementById('modal-create-po-title').innerText = `อนุมัติและสร้างบิล (อ้างอิง ${pr.prNumber})`;
         document.getElementById('modal-create-po-subtitle').innerText = `คุณสามารถปรับยอดจำนวนสั่ง หรือเพิ่มสินค้ารายการอื่นได้ก่อนกดบันทึก`;
         document.getElementById('create-po-warehouse').value = pr.warehouse || "";
@@ -731,14 +732,55 @@
         document.getElementById('modal-create-po').classList.add('flex');
     }
 
+    function openEditPOForm(groupIdx) {
+        const group = groupedPOs[groupIdx];
+        if(!group) return;
+
+        // เปลี่ยนหัวข้อฟอร์ม
+        document.getElementById('modal-create-po-title').innerText = `แก้ไขบิลสั่งซื้อ (${group.poNumber || 'ไม่มีเลข'})`;
+        document.getElementById('modal-create-po-subtitle').innerText = `แก้ไขข้อมูลที่ต้องการแล้วกด "บันทึกการแก้ไข"`;
+
+        // เติมข้อมูลส่วนหัว
+        document.getElementById('create-po-vendor').value = group.vendor;
+        document.getElementById('create-po-warehouse').value = group.warehouse;
+        
+        // เติมข้อมูลรายการสินค้า
+        const container = document.getElementById('create-po-items-container');
+        container.innerHTML = '';
+        group.items.forEach(item => {
+            addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku);
+        });
+
+        // เก็บ UID เก่าไว้ในฟอร์มเพื่อส่งไปลบ
+        const poUids = group.items.map(i => i.uid);
+        const form = document.getElementById('form-create-po');
+        form.dataset.mode = 'edit';
+        form.dataset.oldUids = JSON.stringify(poUids);
+        form.dataset.prUid = group.items[0].prUid || ""; // ถ้ามี PR reference เดิม
+        form.dataset.poNumber = group.poNumber || "";
+
+        // ปรับชื่อปุ่ม
+        document.getElementById('btn-submit-direct-po').innerText = 'บันทึกการแก้ไข (Update PO)';
+
+        document.getElementById('modal-create-po').classList.remove('hidden');
+        document.getElementById('modal-create-po').classList.add('flex');
+    }
+
     function openPurchasingForm() {
         document.getElementById('c-ref-pr-row').value = ""; 
         document.getElementById('modal-create-po-title').innerText = `สร้างบิลใหม่ (Direct PO)`;
         document.getElementById('modal-create-po-subtitle').innerText = `โปรดระบุข้อมูลให้ครบถ้วนก่อนบันทึก`;
 
         document.getElementById('create-po-vendor').value = "";
-        document.getElementById('form-create-po').reset();
+        const form = document.getElementById('form-create-po');
+        form.reset();
+        delete form.dataset.mode;
+        delete form.dataset.oldUids;
+        delete form.dataset.prUid;
+        delete form.dataset.poNumber;
+        
         document.getElementById('create-po-items-container').innerHTML = '';
+        document.getElementById('btn-submit-direct-po').innerText = 'บันทึกสั่งซื้อ (Create PO)';
         
         addCreatePoItemRow(); 
         document.getElementById('modal-create-po').classList.remove('hidden');
@@ -779,6 +821,7 @@
         e.preventDefault();
         const vendor = document.getElementById('create-po-vendor').value.trim();
         const warehouse = document.getElementById('create-po-warehouse').value;
+        const form = document.getElementById('form-create-po');
 
         if(!vendor || !warehouse) return showNotification('กรุณาเลือก Vendor และคลังสินค้าให้ครบถ้วน', 'warning');
 
@@ -797,13 +840,19 @@
         if(hasError || items.length === 0) return showNotification('กรุณากรอกข้อมูลสินค้าให้ครบถ้วน', 'warning');
 
         const refPrRow = document.getElementById('c-ref-pr-row').value;
+        const prUid = form.dataset.pruid || form.dataset.prUid;
 
         document.getElementById('btn-submit-direct-po').disabled = true;
+        const originalBtnText = document.getElementById('btn-submit-direct-po').innerText;
         document.getElementById('btn-submit-direct-po').innerHTML = '<div class="spinner spinner-sm mr-2 border-t-white"></div> บันทึก...';
 
-        if (refPrRow) {
+        if (form.dataset.mode === 'edit') {
+            const oldPoUids = JSON.parse(form.dataset.oldUids);
+            const poNumber = form.dataset.poNumber;
+            await apiAction('updatePO', { oldPoUids, vendor, warehouse, poNumber, items, prUid });
+        } else if (refPrRow) {
             await apiAction('approvePR', { 
-                prRowNumber: parseInt(refPrRow), vendor: vendor, poNumber: "", warehouse: warehouse, items: items 
+                prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, items: items 
             });
         } else {
             await apiAction('createPO', { vendor, poNumber: "", warehouse, items });
@@ -811,7 +860,7 @@
 
         closeCreatePoModal();
         document.getElementById('btn-submit-direct-po').disabled = false;
-        document.getElementById('btn-submit-direct-po').innerText = 'บันทึกสั่งซื้อ (Create PO)';
+        document.getElementById('btn-submit-direct-po').innerText = originalBtnText;
     }
 
     // =========================================================================
@@ -893,6 +942,7 @@
             itemsHtml += '</div>';
 
             const rowNumbersToDelete = JSON.stringify(group.items.map(i => i.rowNumber));
+            const poUidsToDelete = JSON.stringify(group.items.map(i => i.uid));
 
             card.innerHTML = `
                 ${statusBadgeHtml}
@@ -913,7 +963,10 @@
                         <p class="text-[10px] font-bold text-gray-700 truncate">${group.vendor}</p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick='deletePO(${rowNumbersToDelete})' class="btn-outline-action btn-delete">
+                        <button onclick='openEditPOForm(${idx})' class="btn-outline-action btn-edit ${hasDraft || hasPendingReview ? 'hidden' : ''}">
+                            <i data-lucide="edit-3" class="w-3 h-3"></i> แก้ไขบิล
+                        </button>
+                        <button onclick='deletePO(${rowNumbersToDelete}, ${poUidsToDelete})' class="btn-outline-action btn-delete">
                             <i data-lucide="trash-2" class="w-3 h-3"></i> ลบทั้งบิล
                         </button>
                     </div>
@@ -925,9 +978,9 @@
         lucide.createIcons({ root: container });
     }
 
-    function deletePO(rowNumbersArray) {
+    function deletePO(rowNumbersArray, poUidsArray) {
         showConfirmModal("ยืนยันการลบบิลนี้ออกจากระบบใช่หรือไม่?", () => {
-             apiAction('deletePO', { rowNumbers: rowNumbersArray });
+             apiAction('deletePO', { rowNumbers: rowNumbersArray, poUids: poUidsArray });
         });
     }
 
@@ -1112,7 +1165,7 @@
                     missingPOProduct = item.product;
                 }
 
-                return { rowNumber: item.rowNumber, revisedGrQty: revisedGrQty, matchRemark: remark, poNumber: itemPoNumber };
+                return { rowNumber: item.rowNumber, uid: item.uid, revisedGrQty: revisedGrQty, matchRemark: remark, poNumber: itemPoNumber };
             });
 
             if (!allHavePO) {
