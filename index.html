@@ -1,3 +1,4 @@
+<!-- GitHub Repo: https://github.com/AKRA-WEB/TrackingPO -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -487,6 +488,9 @@
         }
     }
 
+    const PO_CACHE_TTL = 15 * 60 * 1000;
+    function getCache(key, ttlMs) { try { const raw = localStorage.getItem(key); if (!raw) return null; const w = JSON.parse(raw); if (Date.now() - (w._ts||0) > ttlMs) { localStorage.removeItem(key); return null; } return w._d; } catch(e) { localStorage.removeItem(key); return null; } }
+    function setCache(key, data) { localStorage.setItem(key, JSON.stringify({ _ts: Date.now(), _d: data })); }
     async function loadInitialDataInBackground() {
         try {
             const res = await fetch(DATA_SCRIPT_URL, { 
@@ -496,7 +500,7 @@
             });
             const result = await res.json();
             if(result.success) { 
-                localStorage.setItem('CACHE_PO_DATA', JSON.stringify(result));
+                setCache('CACHE_PO_DATA', result);
                 appData = result; 
                 processDataAndRender(); 
             } 
@@ -504,10 +508,10 @@
     }
 
     async function loadInitialData(isManualRefresh = false) {
-        const cachedData = localStorage.getItem('CACHE_PO_DATA');
+        const cachedData = getCache('CACHE_PO_DATA', PO_CACHE_TTL);
         if (cachedData && !isManualRefresh) {
             try {
-                appData = JSON.parse(cachedData);
+                appData = cachedData;
                 processDataAndRender();
                 showNotification('กำลังอัปเดตข้อมูลล่าสุด...', 'warning');
             } catch (e) { showDataLoading('กำลังโหลดข้อมูล...'); }
@@ -523,7 +527,7 @@
             });
             const result = await res.json();
             if(result.success) { 
-                localStorage.setItem('CACHE_PO_DATA', JSON.stringify(result));
+                setCache('CACHE_PO_DATA', result);
                 appData = result; 
                 processDataAndRender(); 
             } 
