@@ -257,7 +257,7 @@
     var APP_CONFIG = {
         API_URL: "https://script.google.com/macros/s/AKfycbwv2oGqYocA-k-EN2qjs_rf64gc9kDCG2o2nIKlAW0BDCT0rXLvcgLurCRaQXjuC-OG/exec",
         PORTAL_URL: "https://akra-web.github.io/Main/", 
-        REQUIRED_ROLES: ["ADMIN", "AKRA", "PURCHASING"], 
+        REQUIRED_ROLES: ["ADMIN", "SUPERVISOR", "AKRA", "PURCHASING"],
         APP_NAME: "ระบบจัดซื้อ (PO)",
         STORAGE_KEY: "akra_po_session_token"
     };
@@ -337,8 +337,9 @@
 
                 if (data.valid) {
                     localStorage.setItem(APP_CONFIG.STORAGE_KEY, tokenToVerify);
+                    window.appSession = data.user;
                     window.currentUser = data.user.name;
-                    
+
                     UI.showApp(data.user.name);
                     AuthGuard.bindEvents();
                     await loadInitialData();
@@ -380,6 +381,14 @@
     };
 
     document.addEventListener('DOMContentLoaded', AuthGuard.init);
+
+    function can(perm) {
+        if (!window.appSession) return false;
+        var perms = (window.appSession.perms && window.appSession.perms["app-po"]) || [];
+        if (perms.length > 0) return perms.includes(perm);
+        var roles = window.appSession.roles || [];
+        return roles.includes("ADMIN") || roles.includes("SUPERVISOR");
+    }
 
     // --- Custom UI Tools ---
     function showDataLoading(text = 'กำลังโหลด...') {
@@ -684,7 +693,7 @@
                 <div class="flex gap-1.5 mt-auto">
                     <button onclick="rejectPR(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-delete flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-red-200">ไม่อนุมัติ</button>
                     <button onclick="closePRAsDirectPO(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 flex-1 justify-center py-1.5 text-[11px] font-bold px-1">⚡ ซื้อให้แล้ว</button>
-                    <button onclick="approvePRToPOForm(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-success flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-emerald-300">✅ เปิดบิล</button>
+                    ${can('approvePR') ? `<button onclick="approvePRToPOForm(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-success flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-emerald-300">✅ เปิดบิล</button>` : ''}
                 </div>
 
             </div>
@@ -1176,6 +1185,7 @@
                 return showNotification(`กรุณาระบุเลข PO สำหรับรายการ "${missingPOProduct}" ให้ครบถ้วนก่อนส่งตั้งหนี้`, 'warning');
             }
 
+            if (!can('closePO')) { showNotification('ไม่มีสิทธิ์ปิด APV', 'error'); return; }
             showConfirmModal(`ยืนยันการตรวจสอบและ Approve บิลใช่หรือไม่?\n\n* ระบบจะบันทึกเลข PO แยกตามรายสินค้าลงในชีท\n* ข้อมูลจะถูกล็อคและไม่สามารถแก้ไขยอดรับได้อีก`, () => {
                 apiAction('closePO', { items: itemsToClose });
             });
