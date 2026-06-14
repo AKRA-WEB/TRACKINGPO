@@ -123,7 +123,7 @@
                     <button onclick="openPurchasingForm()" class="btn-create shadow-md">
                         <i data-lucide="plus-circle" class="w-5 h-5"></i> สร้างบิลใหม่ (Direct PO)
                     </button>
-                    <button onclick="showNotification('ฟังก์ชันวิเคราะห์ Leadtime อยู่ระหว่างพัฒนา', 'warning')" class="bg-blue-50/50 border border-brand-blueLight rounded-lg p-3 flex items-center justify-between hover:bg-blue-50 transition cursor-pointer">
+                    <button type="button" id="btn-delivery-insight" onclick="toggleDeliveryInsightPanel()" aria-expanded="false" aria-controls="delivery-insight-panel" class="bg-blue-50/50 border border-brand-blueLight rounded-lg p-3 flex items-center justify-between hover:bg-blue-50 transition cursor-pointer">
                         <div class="flex items-center gap-3">
                             <div class="bg-brand-blueLight p-2 rounded-md text-brand-blue">
                                 <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
@@ -135,6 +135,21 @@
                         </div>
                         <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
                     </button>
+                </div>
+
+                <div id="delivery-insight-panel" class="glass-card hidden mb-6 overflow-hidden">
+                    <div class="bg-brand-blue text-white px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-bold flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-5 h-5"></i> วิเคราะห์ประสิทธิภาพจัดส่ง Vendor</h2>
+                            <p class="text-xs text-white/80 mt-0.5">คำนวณจาก PO Date → ATA แรกของบิล และใช้วันที่ Vendor ยืนยันส่งเป็นหลักเมื่อมีข้อมูล</p>
+                        </div>
+                        <button type="button" onclick="loadVendorDeliveryInsights(true)" class="bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> รีเฟรช Insight
+                        </button>
+                    </div>
+                    <div id="delivery-insight-content" class="p-4">
+                        <div class="text-center py-8 text-sm text-gray-500">กดเปิดเพื่อโหลดข้อมูล Vendor lead time</div>
+                    </div>
                 </div>
 
                 <div class="flex justify-between items-end mb-4 border-b border-gray-200 pb-2">
@@ -199,7 +214,7 @@
           <form id="form-create-po" onsubmit="submitDirectPO(event)" novalidate>
               <input type="hidden" id="c-ref-pr-row" value="">
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                   <div class="relative">
                       <label class="block text-sm font-semibold text-gray-700 mb-2">พิมพ์เลือก Vendor <span class="text-red-500">*</span></label>
                       <input type="text" id="create-po-vendor" required class="input-field bg-brand-blueLight/30 border-brand-blue/20 focus:border-brand-blue" placeholder="ระบุชื่อผู้จำหน่าย..." autocomplete="off">
@@ -213,6 +228,11 @@
                           <option value="W3">W3 (สีเหลือง)</option><option value="W4">W4 (สีเขียว)</option>
                           <option value="W5">W5 (สีเทา)</option><option value="C1">C1 (สีฟ้าอ่อน)</option><option value="C2">C2 (สีฟ้าเข้ม)</option>
                       </select>
+                  </div>
+                  <div>
+                      <label for="create-po-expected-date" class="block text-sm font-semibold text-gray-700 mb-2">วันที่ Vendor ยืนยันส่ง</label>
+                      <input type="date" id="create-po-expected-date" class="input-field bg-white border-gray-200 focus:border-brand-orange" aria-describedby="create-po-expected-date-help">
+                      <p id="create-po-expected-date-help" class="text-[11px] text-gray-500 mt-1">ไม่บังคับ ถ้ามีวันที่นี้ ระบบจะใช้แทนค่าประมาณ</p>
                   </div>
               </div>
               
@@ -254,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260611.02";
+    const CURRENT_VERSION = "20260614.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -390,13 +410,15 @@
         STORAGE_KEY: "akra_po_session_token"
     };
 
-    var DATA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwO_aH12lmUCWBhnkIsMSK7NjwFhwSBzGNofGn9hRJOkdjF9zFzuKE2s8AjzzCqTXQ/exec";
+    var DATA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx9AFlNt3s-RVMlgVpC3qqp9kR9aKJbX2XKC_xnLs2ZO666dedQM7pMbs6vtSaOPiw/exec";
     
     var appData = { prList: [], pendingPOs: [], grCompleted: [], apvList: [], vendors: [], products: [] };
     var groupedPOs = [];
     var groupedMatchData = {};
-    var groupedAPVData = {}; 
-    var isVendorEventsAttached = false; 
+    var groupedAPVData = {};
+    var deliveryInsightData = null;
+    var isDeliveryInsightLoading = false;
+    var isVendorEventsAttached = false;
     var confirmCallback = null;
 
     var UI = {
@@ -520,6 +542,21 @@
         return String(v).replace(/[&<>"']/g, function(c) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
+    }
+
+    function toDateInputValue(v) {
+        if (!v) return '';
+        const text = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+        const parts = text.split('/');
+        if (parts.length === 3) {
+            const day = parts[0].padStart(2, '0');
+            const month = parts[1].padStart(2, '0');
+            let year = parts[2];
+            if (year.length === 2) year = '20' + year;
+            return `${year}-${month}-${day}`;
+        }
+        return '';
     }
 
     function can(perm) {
@@ -883,6 +920,7 @@
         document.getElementById('modal-create-po-title').innerText = `อนุมัติและสร้างบิล (อ้างอิง ${pr.prNumber})`;
         document.getElementById('modal-create-po-subtitle').innerText = `คุณสามารถปรับยอดจำนวนสั่ง หรือเพิ่มสินค้ารายการอื่นได้ก่อนกดบันทึก`;
         document.getElementById('create-po-warehouse').value = pr.warehouse || "";
+        document.getElementById('create-po-expected-date').value = "";
         
         const container = document.getElementById('create-po-items-container');
         container.innerHTML = '';
@@ -903,6 +941,7 @@
         // เติมข้อมูลส่วนหัว
         document.getElementById('create-po-vendor').value = group.vendor;
         document.getElementById('create-po-warehouse').value = group.warehouse;
+        document.getElementById('create-po-expected-date').value = toDateInputValue(group.expectedDate || '');
         
         // เติมข้อมูลรายการสินค้า
         const container = document.getElementById('create-po-items-container');
@@ -941,6 +980,7 @@
         delete form.dataset.poNumber;
         
         document.getElementById('create-po-items-container').innerHTML = '';
+        document.getElementById('create-po-expected-date').value = "";
         document.getElementById('btn-submit-direct-po').innerText = 'บันทึกสั่งซื้อ (Create PO)';
         
         addCreatePoItemRow(); 
@@ -982,6 +1022,7 @@
         e.preventDefault();
         const vendor = document.getElementById('create-po-vendor').value.trim();
         const warehouse = document.getElementById('create-po-warehouse').value;
+        const expectedDate = document.getElementById('create-po-expected-date').value;
         const form = document.getElementById('form-create-po');
 
         if(!vendor || !warehouse) return showNotification('กรุณาเลือก Vendor และคลังสินค้าให้ครบถ้วน', 'warning');
@@ -1013,13 +1054,13 @@
         if (form.dataset.mode === 'edit') {
             const oldPoUids = JSON.parse(form.dataset.oldUids);
             const poNumber = form.dataset.poNumber;
-            await apiAction('updatePO', { oldPoUids, vendor, warehouse, poNumber, items, prUid });
+            await apiAction('updatePO', { oldPoUids, vendor, warehouse, poNumber, expectedDate, items, prUid });
         } else if (refPrRow) {
-            await apiAction('approvePR', { 
-                prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, items: items 
+            await apiAction('approvePR', {
+                prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
             });
         } else {
-            await apiAction('createPO', { vendor, poNumber: "", warehouse, items });
+            await apiAction('createPO', { vendor, poNumber: "", warehouse, expectedDate, items });
         }
 
         closeCreatePoModal();
@@ -1035,7 +1076,8 @@
       if(appData.pendingPOs) {
           appData.pendingPOs.forEach(po => {
             const key = po.poNumber + '|' + po.vendor + '|' + po.poDate + '|' + po.warehouse;
-            if (!groups[key]) groups[key] = { poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, items: [] };
+            if (!groups[key]) groups[key] = { poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, expectedDate: po.expectedDate || '', items: [] };
+            if (!groups[key].expectedDate && po.expectedDate) groups[key].expectedDate = po.expectedDate;
             groups[key].items.push(po);
           });
       }
@@ -1079,6 +1121,7 @@
             // เช็คว่าบิลนี้มาจากปุ่ม Direct PO หรือเปล่า
             const isDirectPO = group.items.some(i => i.remark && i.remark.toString().includes('Direct PO'));
             let directBadge = isDirectPO ? `<span class="text-[9px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded shadow-sm border border-purple-200 ml-1">⚡ Direct PO</span>` : '';
+            const expectedBadge = group.expectedDate ? `<span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-bold whitespace-nowrap flex-shrink-0 border border-emerald-100">ยืนยันส่ง: ${esc(group.expectedDate)}</span>` : '';
 
             // ปรับสีพื้นหลังการ์ดตาม CI
             let cardClass = "glass-card p-4 flex flex-col h-full relative border-l-4 border-l-gray-300 bg-white transition hover:shadow-md cursor-default";
@@ -1118,7 +1161,10 @@
                         </div>
                         ${itemsHtml}
                     </div>
-                    <span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded font-medium whitespace-nowrap flex-shrink-0 border border-gray-200">สั่ง: ${esc(group.poDate)}</span>
+                    <div class="flex flex-col items-end gap-1">
+                        <span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded font-medium whitespace-nowrap flex-shrink-0 border border-gray-200">สั่ง: ${esc(group.poDate)}</span>
+                        ${expectedBadge}
+                    </div>
                 </div>
                 
                 <div class="mt-auto pt-3 border-t border-gray-50 flex justify-between items-end">
@@ -1147,6 +1193,193 @@
         showConfirmModal("ยืนยันการลบบิลนี้ออกจากระบบใช่หรือไม่?", () => {
              apiAction('deletePO', { rowNumbers: rowNumbersArray, poUids: poUidsArray });
         });
+    }
+
+    async function toggleDeliveryInsightPanel() {
+        const panel = document.getElementById('delivery-insight-panel');
+        const btn = document.getElementById('btn-delivery-insight');
+        const shouldOpen = panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !shouldOpen);
+        if (btn) btn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        if (shouldOpen) {
+            if (!deliveryInsightData) await loadVendorDeliveryInsights(false);
+            else renderDeliveryInsights(deliveryInsightData);
+        }
+    }
+
+    async function loadVendorDeliveryInsights(forceRefresh = false) {
+        if (isDeliveryInsightLoading) return;
+        if (deliveryInsightData && !forceRefresh) {
+            renderDeliveryInsights(deliveryInsightData);
+            return;
+        }
+        const content = document.getElementById('delivery-insight-content');
+        isDeliveryInsightLoading = true;
+        content.innerHTML = `
+            <div class="py-10 flex flex-col items-center justify-center text-brand-blue">
+                <div class="animate-spin rounded-full h-10 w-10 border-t-4 border-b-4 border-brand-blue mb-3"></div>
+                <p class="text-sm font-semibold">กำลังคำนวณ Lead time จาก PO/GR...</p>
+            </div>
+        `;
+        try {
+            const res = await fetch(DATA_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getVendorDeliveryInsights', token: getSessionToken() })
+            });
+            const result = await res.json();
+            if (!result.success) throw new Error(result.message || 'Load insight failed');
+            deliveryInsightData = result;
+            renderDeliveryInsights(result);
+        } catch (e) {
+            content.innerHTML = `
+                <div class="border border-red-100 bg-red-50 text-red-700 rounded-xl p-4 text-sm">
+                    โหลดข้อมูลประสิทธิภาพจัดส่งไม่สำเร็จ กรุณาลองรีเฟรชอีกครั้ง
+                </div>
+            `;
+        } finally {
+            isDeliveryInsightLoading = false;
+        }
+    }
+
+    function renderDeliveryInsights(data) {
+        const content = document.getElementById('delivery-insight-content');
+        const summary = data.summary || {};
+        const pendingRows = (data.pendingIncoming || []).slice(0, 15).map(renderIncomingInsightRow).join('');
+        const vendorRows = (data.vendors || []).slice(0, 20).map(renderVendorInsightRow).join('');
+        content.innerHTML = `
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+                ${renderInsightKpi('ตัวอย่างที่ใช้', summary.sampleCount || 0, 'PO/GR + TrackingPO')}
+                ${renderInsightKpi('Vendor ที่มีประวัติ', summary.vendorCount || 0, 'คำนวณได้')}
+                ${renderInsightKpi('ข้อมูลปัจจุบัน', summary.currentSampleCount || 0, 'จาก PO/GR')}
+                ${renderInsightKpi('ข้อมูลเก่า', summary.legacySampleCount || 0, 'จาก TrackingPO')}
+                ${renderInsightKpi('บิลที่ยังเปิด', summary.pendingCount || 0, 'ใช้แพลนรับของ')}
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <section class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="calendar-clock" class="w-4 h-4 text-brand-orange"></i> ของที่คาดว่าจะเข้าเร็ว ๆ นี้</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">ถ้ามีวันยืนยันจาก Vendor จะใช้วันนั้นก่อน ไม่เช่นนั้นใช้ P75 ของ Vendor</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <caption class="sr-only">รายการ PO ที่คาดว่าจะได้รับสินค้า</caption>
+                            <thead class="bg-white text-xs text-gray-500">
+                                <tr>
+                                    <th scope="col" class="text-left px-4 py-2 font-semibold">Vendor / PO</th>
+                                    <th scope="col" class="text-left px-4 py-2 font-semibold">วันที่คาดเข้า</th>
+                                    <th scope="col" class="text-left px-4 py-2 font-semibold">ที่มา</th>
+                                    <th scope="col" class="text-left px-4 py-2 font-semibold">สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">${pendingRows || `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">ไม่มีบิลรอสินค้าเข้า</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="truck" class="w-4 h-4 text-brand-blue"></i> Ranking Lead time ตาม Vendor</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Avg ไว้ดูภาพรวม ส่วนวันคาดการณ์ใช้ P75 เพื่อกันแผนพลาด</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <caption class="sr-only">สถิติ Lead time ของแต่ละ Vendor</caption>
+                            <thead class="bg-white text-xs text-gray-500">
+                                <tr>
+                                    <th scope="col" class="text-left px-4 py-2 font-semibold">Vendor</th>
+                                    <th scope="col" class="text-right px-4 py-2 font-semibold">Avg</th>
+                                    <th scope="col" class="text-right px-4 py-2 font-semibold">Median</th>
+                                    <th scope="col" class="text-right px-4 py-2 font-semibold">P75</th>
+                                    <th scope="col" class="text-left px-4 py-2 font-semibold">คุณภาพข้อมูล</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">${vendorRows || `<tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">ยังไม่มีข้อมูล Lead time ที่ใช้คำนวณได้</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        `;
+        lucide.createIcons({ root: content });
+    }
+
+    function renderInsightKpi(label, value, hint) {
+        return `
+            <div class="border border-gray-200 rounded-xl bg-white p-3">
+                <p class="text-[11px] text-gray-500 font-semibold">${esc(label)}</p>
+                <p class="text-2xl font-bold text-brand-blue mt-1">${esc(value)}</p>
+                <p class="text-[11px] text-gray-400 mt-0.5">${esc(hint)}</p>
+            </div>
+        `;
+    }
+
+    function renderIncomingInsightRow(item) {
+        const products = (item.products || []).map(esc).join(', ');
+        const dateText = item.plannedDate || '-';
+        const dayText = deliveryDayText(item);
+        const statusClass = item.isOverdue ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-50 text-gray-700 border-gray-100';
+        return `
+            <tr class="align-top">
+                <td class="px-4 py-3">
+                    <p class="font-bold text-gray-800">${esc(item.vendor)}</p>
+                    <p class="text-xs text-gray-500">${esc(item.poNumber || 'ไม่มีเลข PO')} · ${esc(item.warehouse || '-')} · ${esc(item.itemCount)} รายการ</p>
+                    ${products ? `<p class="text-[11px] text-gray-400 mt-1 max-w-[240px] truncate">${products}</p>` : ''}
+                </td>
+                <td class="px-4 py-3">
+                    <p class="font-bold text-gray-800 whitespace-nowrap">${esc(dateText)}</p>
+                    <p class="text-xs ${item.isOverdue ? 'text-red-600 font-bold' : 'text-gray-500'}">${esc(dayText)}</p>
+                </td>
+                <td class="px-4 py-3">${deliverySourceBadge(item.planSource, item.confidence)}</td>
+                <td class="px-4 py-3"><span class="inline-flex px-2 py-1 rounded border text-xs font-bold ${statusClass}">${esc(deliveryStatusText(item))}</span></td>
+            </tr>
+        `;
+    }
+
+    function renderVendorInsightRow(vendor) {
+        return `
+            <tr>
+                <td class="px-4 py-3">
+                    <p class="font-bold text-gray-800">${esc(vendor.vendor)}</p>
+                    <p class="text-xs text-gray-500">${esc(vendor.count)} ตัวอย่าง · ช่วง ${esc(vendor.minLeadDays)}-${esc(vendor.maxLeadDays)} วัน</p>
+                </td>
+                <td class="px-4 py-3 text-right font-bold text-gray-700">${esc(vendor.avgLeadDays)}</td>
+                <td class="px-4 py-3 text-right font-bold text-gray-700">${esc(vendor.medianLeadDays)}</td>
+                <td class="px-4 py-3 text-right font-bold text-brand-orange">${esc(vendor.p75LeadDays)}</td>
+                <td class="px-4 py-3">${vendorQualityBadge(vendor)}</td>
+            </tr>
+        `;
+    }
+
+    function deliverySourceBadge(source, confidence) {
+        if (source === 'confirmed') return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-emerald-50 text-emerald-700 border-emerald-100">Vendor ยืนยัน</span>`;
+        if (source === 'estimated_p75') return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-blue-50 text-brand-blue border-brand-blueLight">ประเมิน P75${confidence === 'low' ? ' · ข้อมูลน้อย' : ''}</span>`;
+        if (source === 'actual') return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-orange-50 text-brand-orange border-orange-100">เริ่มรับแล้ว</span>`;
+        return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-gray-50 text-gray-500 border-gray-100">ข้อมูลไม่พอ</span>`;
+    }
+
+    function deliveryDayText(item) {
+        if (item.status === 'arrived') return 'รับเข้าครั้งแรกแล้ว';
+        if (item.daysUntil === null || item.daysUntil === undefined) return 'ยังประเมินไม่ได้';
+        const days = Number(item.daysUntil);
+        if (days === 0) return 'วันนี้';
+        if (days > 0) return `อีก ${days} วัน`;
+        return `เลยมา ${Math.abs(days)} วัน`;
+    }
+
+    function deliveryStatusText(item) {
+        if (item.status === 'arrived') return 'รับของแล้ว';
+        if (item.isOverdue) return 'ล่าช้า';
+        if (item.planSource === 'confirmed') return 'ยืนยันวันส่ง';
+        if (item.planSource === 'estimated_p75') return 'คาดการณ์';
+        return 'รอข้อมูล';
+    }
+
+    function vendorQualityBadge(vendor) {
+        if (vendor.risk === 'low_data') return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-yellow-50 text-yellow-700 border-yellow-100">ข้อมูลน้อย</span>`;
+        if (vendor.risk === 'volatile') return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-red-50 text-red-700 border-red-100">แกว่งสูง</span>`;
+        if (vendor.confidence === 'high') return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-emerald-50 text-emerald-700 border-emerald-100">มั่นใจสูง</span>`;
+        return `<span class="inline-flex px-2 py-1 rounded border text-xs font-bold bg-blue-50 text-brand-blue border-brand-blueLight">ใช้งานได้</span>`;
     }
 
     // =========================================================================
