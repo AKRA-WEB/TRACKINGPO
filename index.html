@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260614.02";
+    const CURRENT_VERSION = "20260617.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -542,6 +542,22 @@
         return String(v).replace(/[&<>"']/g, function(c) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
+    }
+
+    function usableBillRefUid(value) {
+        const ref = String(value || '').trim();
+        return ref && ref !== 'DIRECT' ? ref : '';
+    }
+
+    function isDirectBillRefUid(value) {
+        const ref = String(value || '').trim();
+        return !ref || ref === 'DIRECT' || ref.indexOf('DIRECT-') === 0;
+    }
+
+    function poBillGroupKey(po, legacySuffix = '') {
+        const ref = usableBillRefUid(po && po.refPrUid);
+        if (ref) return 'bill:' + ref + legacySuffix;
+        return 'legacy:' + [po.poNumber || '', po.vendor || '', po.poDate || '', po.warehouse || ''].join('|') + legacySuffix;
     }
 
     function toDateInputValue(v) {
@@ -953,9 +969,11 @@
         // เก็บ UID เก่าไว้ในฟอร์มเพื่อส่งไปลบ
         const poUids = group.items.map(i => i.uid);
         const form = document.getElementById('form-create-po');
+        const refPrUid = usableBillRefUid(group.refPrUid || group.items[0].refPrUid);
         form.dataset.mode = 'edit';
         form.dataset.oldUids = JSON.stringify(poUids);
-        form.dataset.prUid = group.items[0].prUid || ""; // ถ้ามี PR reference เดิม
+        form.dataset.refPrUid = refPrUid;
+        form.dataset.prUid = refPrUid && !isDirectBillRefUid(refPrUid) ? refPrUid : "";
         form.dataset.poNumber = group.poNumber || "";
 
         // ปรับชื่อปุ่ม
@@ -977,6 +995,7 @@
         delete form.dataset.mode;
         delete form.dataset.oldUids;
         delete form.dataset.prUid;
+        delete form.dataset.refPrUid;
         delete form.dataset.poNumber;
         
         document.getElementById('create-po-items-container').innerHTML = '';
@@ -1043,6 +1062,7 @@
 
         const refPrRow = document.getElementById('c-ref-pr-row').value;
         const prUid = form.dataset.pruid || form.dataset.prUid;
+        const refPrUid = form.dataset.refPrUid || "";
 
         const needPerm = (form.dataset.mode === 'edit') ? 'createPO' : (refPrRow ? 'approvePR' : 'createPO');
         if (!can(needPerm)) return showNotification('ไม่มีสิทธิ์ดำเนินการนี้', 'error');
@@ -1054,7 +1074,7 @@
         if (form.dataset.mode === 'edit') {
             const oldPoUids = JSON.parse(form.dataset.oldUids);
             const poNumber = form.dataset.poNumber;
-            await apiAction('updatePO', { oldPoUids, vendor, warehouse, poNumber, expectedDate, items, prUid });
+            await apiAction('updatePO', { oldPoUids, vendor, warehouse, poNumber, expectedDate, items, prUid, refPrUid });
         } else if (refPrRow) {
             await apiAction('approvePR', {
                 prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
@@ -1075,8 +1095,8 @@
       const groups = {};
       if(appData.pendingPOs) {
           appData.pendingPOs.forEach(po => {
-            const key = po.poNumber + '|' + po.vendor + '|' + po.poDate + '|' + po.warehouse;
-            if (!groups[key]) groups[key] = { poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, expectedDate: po.expectedDate || '', items: [] };
+            const key = poBillGroupKey(po);
+            if (!groups[key]) groups[key] = { refPrUid: usableBillRefUid(po.refPrUid), poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, expectedDate: po.expectedDate || '', items: [] };
             if (!groups[key].expectedDate && po.expectedDate) groups[key].expectedDate = po.expectedDate;
             groups[key].items.push(po);
           });
@@ -1389,8 +1409,9 @@
         groupedMatchData = {};
         if(appData.grCompleted) {
             appData.grCompleted.forEach(item => {
-                const key = `${item.poNumber}_${item.vendor}_${item.warehouse}`;
-                if(!groupedMatchData[key]) groupedMatchData[key] = { poNumber: item.poNumber, vendor: item.vendor, warehouse: item.warehouse, ata: item.ata, receiver: item.receiverName, items: [] };
+                const billRef = usableBillRefUid(item.refPrUid);
+                const key = billRef ? 'bill:' + billRef : `${item.poNumber}_${item.vendor}_${item.warehouse}`;
+                if(!groupedMatchData[key]) groupedMatchData[key] = { refPrUid: usableBillRefUid(item.refPrUid), poNumber: item.poNumber, vendor: item.vendor, warehouse: item.warehouse, ata: item.ata, receiver: item.receiverName, items: [] };
                 groupedMatchData[key].items.push(item);
             });
         }
