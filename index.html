@@ -3,7 +3,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://script.google.com">
   <title>ระบบจัดซื้อ & APV</title>
   
@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260617.01";
+    const CURRENT_VERSION = "20260621.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
