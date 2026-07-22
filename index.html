@@ -201,8 +201,8 @@
   </div>
 
   <!-- Modals -->
-  <div id="modal-create-po" class="fixed inset-0 bg-black/60 z-[9900] hidden justify-center items-center p-4 backdrop-blur-sm overflow-y-auto">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 my-8">
+  <div id="modal-create-po" class="fixed inset-0 bg-black/60 z-[9900] hidden justify-center items-start sm:items-center p-0 sm:p-4 backdrop-blur-sm overflow-y-auto">
+      <div class="bg-white rounded-none sm:rounded-xl shadow-xl w-full max-w-2xl min-h-full sm:min-h-0 p-4 sm:p-6 my-0 sm:my-8">
           <div class="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
               <div>
                   <h3 class="text-xl font-bold text-gray-800" id="modal-create-po-title">สร้างบิลใหม่ (Direct PO)</h3>
@@ -238,8 +238,8 @@
               
               <div class="bg-white rounded-xl border border-gray-200 mb-6 pb-2">
                   <h4 class="text-sm font-bold text-gray-800 p-4 border-b border-gray-100 bg-gray-50/50 rounded-t-xl">รายการสินค้า</h4>
-                  <div class="p-4">
-                      <div id="create-po-items-container" class="space-y-3 max-h-[400px] overflow-y-auto pr-2 pb-32"></div>
+                  <div class="p-3 sm:p-4">
+                      <div id="create-po-items-container" class="space-y-3 max-h-[400px] overflow-y-auto pr-0 sm:pr-2 pb-24 sm:pb-32"></div>
                       <button type="button" onclick="addCreatePoItemRow()" class="mt-4 w-full border-2 border-dashed border-gray-300 text-brand-blue bg-white hover:bg-gray-50 py-3 rounded-lg text-sm font-bold transition flex justify-center items-center gap-1.5">
                           <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มรายการสินค้า
                       </button>
@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260627.02";
+    const CURRENT_VERSION = "20260722.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -1111,23 +1111,28 @@
         document.getElementById('modal-create-po').classList.remove('flex');
     }
 
+    let createPoItemRowCounter = 0;
     function addCreatePoItemRow(product = '', qty = '', unit = '', sku = '') {
         const container = document.getElementById('create-po-items-container');
         const div = document.createElement('div');
-        div.className = "create-po-item-row flex items-center relative bg-white rounded-lg border border-gray-200 mt-2 focus-within:z-50";
+        const itemRowId = ++createPoItemRowCounter;
+        div.className = "create-po-item-row grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3rem] gap-3 relative bg-gray-50 rounded-xl border border-gray-200 p-3 mt-2 focus-within:z-50 sm:flex sm:items-end sm:gap-0 sm:bg-white sm:rounded-lg sm:p-0";
         div.innerHTML = `
-            <div class="flex-1 relative">
-                <input type="text" class="w-full px-4 py-2.5 text-sm font-medium outline-none rounded-l-lg c-product" placeholder="ชื่อสินค้า..." value="${esc(product)}" required autocomplete="off">
+            <div class="col-span-3 min-w-0 relative sm:flex-1">
+                <label for="create-po-product-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">ชื่อสินค้า</label>
+                <input type="text" id="create-po-product-${itemRowId}" class="w-full min-h-[48px] px-3 py-3 text-base font-medium outline-none rounded-lg border border-gray-300 bg-white c-product sm:min-h-0 sm:px-4 sm:py-2.5 sm:text-sm sm:rounded-l-lg sm:rounded-r-none sm:border-0" placeholder="พิมพ์ชื่อสินค้า..." value="${esc(product)}" required autocomplete="off">
                 <input type="hidden" class="c-sku" value="${esc(sku)}">
                 <ul class="suggestion-box absolute z-[60] w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-72 overflow-y-auto hidden mt-1 divide-y divide-gray-50 top-full left-0"></ul>
             </div>
-            <div class="w-24 border-l border-gray-200">
-                <input type="number" class="w-full px-3 py-2.5 text-sm font-bold text-gray-700 outline-none text-center c-qty" placeholder="จำนวน" min="1" value="${esc(qty)}" required>
+            <div class="min-w-0 sm:w-24 sm:border-l sm:border-gray-200">
+                <label for="create-po-qty-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">จำนวน</label>
+                <input type="number" id="create-po-qty-${itemRowId}" class="w-full min-h-[48px] px-3 py-3 text-base font-bold text-gray-700 outline-none text-center rounded-lg border border-gray-300 bg-white c-qty sm:min-h-0 sm:py-2.5 sm:text-sm sm:rounded-none sm:border-0" placeholder="0" min="1" value="${esc(qty)}" required>
             </div>
-            <div class="w-20 border-l border-gray-200">
-                <input type="text" class="w-full px-2 py-2.5 text-sm font-medium text-gray-500 bg-gray-50 outline-none text-center c-unit" placeholder="หน่วย" value="${esc(unit)}" readonly tabindex="-1">
+            <div class="min-w-0 sm:w-20 sm:border-l sm:border-gray-200">
+                <label for="create-po-unit-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">หน่วย</label>
+                <input type="text" id="create-po-unit-${itemRowId}" class="w-full min-h-[48px] px-2 py-3 text-base font-medium text-gray-600 bg-white outline-none text-center rounded-lg border border-gray-300 c-unit sm:min-h-0 sm:py-2.5 sm:text-sm sm:rounded-none sm:border-0 sm:bg-gray-50" placeholder="หน่วย" value="${esc(unit)}" readonly tabindex="-1">
             </div>
-            <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 px-3 py-2.5 font-bold transition border-l border-gray-200 bg-transparent border-none">
+            <button type="button" onclick="this.parentElement.remove()" aria-label="ลบรายการสินค้า" class="self-end min-h-[48px] min-w-[48px] flex items-center justify-center text-red-500 hover:text-red-700 px-3 py-2.5 font-bold transition rounded-lg border border-red-100 bg-red-50 sm:self-auto sm:min-h-0 sm:min-w-0 sm:rounded-none sm:rounded-r-lg sm:border-0 sm:border-l sm:border-gray-200 sm:bg-transparent">
                 <i data-lucide="x" class="w-4 h-4"></i>
             </button>
         `;
