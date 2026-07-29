@@ -202,7 +202,7 @@
 
   <!-- Modals -->
   <div id="modal-create-po" class="fixed inset-0 bg-black/60 z-[9900] hidden justify-center items-start sm:items-center p-0 sm:p-4 backdrop-blur-sm overflow-y-auto">
-      <div class="bg-white rounded-none sm:rounded-xl shadow-xl w-full max-w-2xl min-h-full sm:min-h-0 p-4 sm:p-6 my-0 sm:my-8">
+      <div class="bg-white rounded-none sm:rounded-xl shadow-xl w-full max-w-2xl sm:max-w-5xl min-h-full sm:min-h-0 p-4 sm:p-6 my-0 sm:my-8">
           <div class="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
               <div>
                   <h3 class="text-xl font-bold text-gray-800" id="modal-create-po-title">สร้างบิลใหม่ (Direct PO)</h3>
@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260722.01";
+    const CURRENT_VERSION = "20260729.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
