@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260729.03";
+    const CURRENT_VERSION = "20260729.04";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -679,8 +679,8 @@
             const result = await res.json();
 
             if (action === 'deletePO') {
-                localStorage.removeItem('CACHE_PO_ACTIVE_V2');
-                const reloadSucceeded = await loadInitialDataInBackground();
+                localStorage.removeItem('CACHE_PO_ACTIVE_V3');
+                const reloadSucceeded = await loadInitialDataInBackground(true);
                 hideDataLoading();
 
                 if (!result.success) {
@@ -817,16 +817,16 @@
         }
     }
 
-    async function loadInitialDataInBackground() {
+    async function loadInitialDataInBackground(bypassCache = false) {
         try {
             const res = await fetch(DATA_SCRIPT_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getInitialData', data: { includeProducts: false, includeCompleted: false } })
+                body: JSON.stringify({ action: 'getInitialData', data: { includeProducts: false, includeCompleted: false, bypassCache } })
             });
             const result = await res.json();
             if (result.success) {
-                setCache('CACHE_PO_ACTIVE_V2', result);
+                setCache('CACHE_PO_ACTIVE_V3', result);
                 appData.prList = result.prList;
                 appData.pendingPOs = result.pendingPOs;
                 appData.vendors = result.vendors;
@@ -838,7 +838,7 @@
     }
 
     async function loadInitialData(isManualRefresh = false) {
-        const cachedActive = getCache('CACHE_PO_ACTIVE_V2', PO_ACTIVE_CACHE_TTL);
+        const cachedActive = getCache('CACHE_PO_ACTIVE_V3', PO_ACTIVE_CACHE_TTL);
         const cachedProducts = getCache('CACHE_PO_PRODUCTS_V1', PO_PRODUCTS_CACHE_TTL);
         if (cachedActive && !isManualRefresh) {
             try {
@@ -864,7 +864,7 @@
             });
             const result = await res.json();
             if (result.success) {
-                setCache('CACHE_PO_ACTIVE_V2', result);
+                setCache('CACHE_PO_ACTIVE_V3', result);
                 appData = { ...result, grCompleted: appData.grCompleted || [], apvList: appData.apvList || [], products: appData.products || [] };
                 poCompletedLoaded = false;
                 processDataAndRender();
@@ -1283,7 +1283,9 @@
             const hasDraft = group.items.some(i => i.status === 'Draft GR');
             const hasPendingReview = group.items.some(i => i.status === 'Pending Review');
             const hasBillReceivingStarted = group.items.some(i => i.billReceivingStarted === true);
+            const hasCompletedSibling = group.items.some(i => i.billHasCompletedSibling === true);
             const receivingStarted = hasDraft || hasPendingReview || hasBillReceivingStarted;
+            const editBlocked = receivingStarted || hasCompletedSibling;
             
             // เช็คว่าบิลนี้มาจากปุ่ม Direct PO หรือเปล่า
             const isDirectPO = group.items.some(i => i.remark && i.remark.toString().includes('Direct PO'));
@@ -1349,7 +1351,7 @@
                         <p class="text-[10px] font-bold text-gray-700 truncate">${esc(group.vendor)}</p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick='openEditPOForm(${idx})' class="btn-outline-action btn-edit ${receivingStarted ? 'hidden' : ''}">
+                        <button onclick='openEditPOForm(${idx})' class="btn-outline-action btn-edit ${editBlocked ? 'hidden' : ''}">
                             <i data-lucide="edit-3" class="w-3 h-3"></i> แก้ไขบิล
                         </button>
                         ${deleteButtonHtml}
