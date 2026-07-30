@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260730.02";
+    const CURRENT_VERSION = "20260730.03";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -1376,6 +1376,7 @@
 
     function deletePO(request) {
         if (!can('createPO')) { showNotification('ไม่มีสิทธิ์ลบบิลสั่งซื้อ', 'error'); return; }
+        if (deletePO.inFlight) return;
         const poUids = normalizeDeletePoUids(request && request.poUids);
         const refPrUid = normalizeDeleteBillRef(request && request.refPrUid);
         const legacyBill = request && request.legacyBill === true;
@@ -1384,8 +1385,14 @@
             return;
         }
 
-        showConfirmModal("ยืนยันการลบบิลทั้งวงจรใช่หรือไม่?\n\nข้อมูล PO และข้อมูลรับสินค้า (GR) ที่เกี่ยวข้องจะถูกลบทั้งหมด", () => {
-             apiAction('deletePO', { poUids, refPrUid, expectedItemCount: poUids.length, legacyBill });
+        showConfirmModal("ยืนยันการลบบิลทั้งวงจรใช่หรือไม่?\n\nข้อมูล PO และข้อมูลรับสินค้า (GR) ที่เกี่ยวข้องจะถูกลบทั้งหมด", async () => {
+            if (deletePO.inFlight) return;
+            deletePO.inFlight = true;
+            try {
+                await apiAction('deletePO', { poUids, refPrUid, expectedItemCount: poUids.length, legacyBill });
+            } finally {
+                deletePO.inFlight = false;
+            }
         });
     }
 
