@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260729.04";
+    const CURRENT_VERSION = "20260730.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -680,7 +680,7 @@
 
             if (action === 'deletePO') {
                 localStorage.removeItem('CACHE_PO_ACTIVE_V3');
-                const reloadSucceeded = await loadInitialDataInBackground(true);
+                const reloadSucceeded = await reloadAllPODataAfterDelete();
                 hideDataLoading();
 
                 if (!result.success) {
@@ -690,16 +690,21 @@
 
                 const requestedUids = normalizeDeletePoUids(payload.poUids);
                 const requestedRefPrUid = normalizeDeleteBillRef(payload.refPrUid);
+                const legacyBill = payload.legacyBill === true;
                 const responseMatchesRequest =
-                    Number(result.deletedCount) === requestedUids.length &&
+                    Number(result.deletedPOCount || result.deletedCount) >= requestedUids.length &&
                     normalizeDeleteBillRef(result.refPrUid) === requestedRefPrUid;
-                const activeUids = new Set((appData.pendingPOs || []).map(po => String(po.uid || '').trim()).filter(Boolean));
-                const deletedUidsStillActive = requestedUids.some(uid => activeUids.has(uid));
-                const deletedBillRefStillActive = (appData.pendingPOs || []).some(po =>
+                const lifecycleItems = []
+                    .concat(appData.pendingPOs || [])
+                    .concat(appData.grCompleted || [])
+                    .concat(appData.apvList || []);
+                const lifecycleUids = new Set(lifecycleItems.map(po => String(po.uid || '').trim()).filter(Boolean));
+                const deletedUidsStillPresent = requestedUids.some(uid => lifecycleUids.has(uid));
+                const deletedBillRefStillPresent = !legacyBill && lifecycleItems.some(po =>
                     normalizeDeleteBillRef(po.refPrUid) === requestedRefPrUid
                 );
 
-                if (!reloadSucceeded || !responseMatchesRequest || deletedUidsStillActive || deletedBillRefStillActive) {
+                if (!reloadSucceeded || !responseMatchesRequest || deletedUidsStillPresent || deletedBillRefStillPresent) {
                     showNotification('ไม่สามารถยืนยันผลการลบจากข้อมูลล่าสุดได้ กรุณาตรวจสอบบิลแล้วลองอีกครั้ง', 'error');
                     return { success: false, reason: 'stale_data', message: 'Delete confirmation mismatch' };
                 }
@@ -835,6 +840,33 @@
             }
         } catch(e) { console.warn('Background Data Sync Error', e); }
         return false;
+    }
+
+    async function reloadAllPODataAfterDelete() {
+        try {
+            const res = await fetch(DATA_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getInitialData',
+                    data: { includeProducts: false, includeCompleted: true, bypassCache: true }
+                })
+            });
+            const result = await res.json();
+            if (!result.success) return false;
+
+            appData.prList = result.prList || [];
+            appData.pendingPOs = result.pendingPOs || [];
+            appData.grCompleted = result.grCompleted || [];
+            appData.apvList = result.apvList || [];
+            appData.vendors = result.vendors || appData.vendors || [];
+            poCompletedLoaded = true;
+            processDataAndRender();
+            return true;
+        } catch (error) {
+            console.warn('Full lifecycle delete confirmation failed', error);
+            return false;
+        }
     }
 
     async function loadInitialData(isManualRefresh = false) {
@@ -1322,10 +1354,11 @@
 
             const deleteRequest = esc(JSON.stringify({
                 poUids: group.items.map(i => i.uid),
-                refPrUid: group.refPrUid
+                refPrUid: group.refPrUid || 'DIRECT',
+                legacyBill: !group.refPrUid
             }));
-            const deleteButtonHtml = receivingStarted ? '' : `
-                        <button onclick='deletePO(${deleteRequest})' class="btn-outline-action btn-delete">
+            const deleteButtonHtml = `
+                        <button onclick='deletePO(${deleteRequest})' class="btn-outline-action btn-delete delete-lifecycle-active">
                             <i data-lucide="trash-2" class="w-3 h-3"></i> ลบทั้งบิล
                         </button>`;
 
@@ -1368,23 +1401,14 @@
         if (!can('createPO')) { showNotification('ไม่มีสิทธิ์ลบบิลสั่งซื้อ', 'error'); return; }
         const poUids = normalizeDeletePoUids(request && request.poUids);
         const refPrUid = normalizeDeleteBillRef(request && request.refPrUid);
-        const requestedUidSet = new Set(poUids);
-        const receivingStarted = (appData.pendingPOs || []).some(po =>
-            requestedUidSet.has(String(po.uid || '').trim()) &&
-            (po.status === 'Draft GR' || po.status === 'Pending Review' || po.billReceivingStarted === true)
-        );
-
-        if (receivingStarted) {
-            showNotification('บิลนี้มีบางรายการเริ่มรับสินค้าแล้ว จึงลบทั้งบิลไม่ได้', 'error');
-            return;
-        }
+        const legacyBill = request && request.legacyBill === true;
         if (!poUids.length || !refPrUid) {
             showNotification('ข้อมูลบิลไม่เป็นปัจจุบัน กรุณารีเฟรชก่อนลบ', 'error');
             return;
         }
 
-        showConfirmModal("ยืนยันการลบบิลนี้ออกจากระบบใช่หรือไม่?", () => {
-             apiAction('deletePO', { poUids, refPrUid, expectedItemCount: poUids.length });
+        showConfirmModal("ยืนยันการลบบิลทั้งวงจรใช่หรือไม่?\n\nข้อมูล PO และข้อมูลรับสินค้า (GR) ที่เกี่ยวข้องจะถูกลบทั้งหมด", () => {
+             apiAction('deletePO', { poUids, refPrUid, expectedItemCount: poUids.length, legacyBill });
         });
     }
 
@@ -1584,7 +1608,7 @@
             appData.grCompleted.forEach(item => {
                 const billRef = usableBillRefUid(item.refPrUid);
                 const key = billRef ? 'bill:' + billRef : `${item.poNumber}_${item.vendor}_${item.warehouse}`;
-                if(!groupedMatchData[key]) groupedMatchData[key] = { refPrUid: usableBillRefUid(item.refPrUid), poNumber: item.poNumber, vendor: item.vendor, warehouse: item.warehouse, ata: item.ata, receiver: item.receiverName, items: [] };
+                if(!groupedMatchData[key]) groupedMatchData[key] = { refPrUid: billRef || 'DIRECT', legacyBill: !billRef, poNumber: item.poNumber, vendor: item.vendor, warehouse: item.warehouse, ata: item.ata, receiver: item.receiverName, items: [] };
                 groupedMatchData[key].items.push(item);
             });
         }
@@ -1598,14 +1622,26 @@
         Object.values(groupedMatchData).forEach((group, gIdx) => {
             const block = document.createElement('div');
             block.className = "glass-card overflow-hidden shadow-sm";
-            
+            const completedDeleteRequest = esc(JSON.stringify({
+                poUids: group.items.map(item => item.uid),
+                refPrUid: group.refPrUid,
+                legacyBill: group.legacyBill === true
+            }));
+            const completedDeleteButton = `
+                        <button onclick='deletePO(${completedDeleteRequest})' class="btn-outline-action btn-delete delete-lifecycle-completed bg-white">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i> ลบทั้งบิล
+                        </button>`;
+
             let html = `
                 <div class="bg-brand-blue text-white px-4 md:px-5 py-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                     <div class="flex flex-col md:flex-row md:items-center gap-3 w-full md:w-auto">
                         <span class="font-bold text-lg text-white">กลุ่มรายการรอกระทบยอด</span>
                         <span class="text-xs text-white/90 bg-white/20 px-2 py-1.5 rounded border border-white/10 truncate">🏢 ${esc(group.vendor)} | 🏠 ${esc(group.warehouse)}</span>
                     </div>
-                    <span class="text-xs text-white/80 font-medium">รับ: ${esc(group.ata)} โดย ${esc(group.receiver)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-white/80 font-medium">รับ: ${esc(group.ata)} โดย ${esc(group.receiver)}</span>
+                        ${completedDeleteButton}
+                    </div>
                 </div>
                 
                 <div class="bg-brand-blueLight/30 border-b border-brand-blueLight px-4 py-2 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
@@ -1796,8 +1832,9 @@
         groupedAPVData = {};
         if(appData.apvList) {
             appData.apvList.forEach(item => {
-                const key = `${item.poNumber}_${item.vendor}`;
-                if(!groupedAPVData[key]) groupedAPVData[key] = { poNumber: item.poNumber, vendor: item.vendor, items: [] };
+                const refPrUid = usableBillRefUid(item.refPrUid);
+                const key = refPrUid ? `bill:${refPrUid}` : `${item.poNumber}_${item.vendor}`;
+                if(!groupedAPVData[key]) groupedAPVData[key] = { refPrUid: refPrUid || 'DIRECT', legacyBill: !refPrUid, poNumber: item.poNumber, vendor: item.vendor, items: [] };
                 groupedAPVData[key].items.push(item);
             });
         }
@@ -1814,6 +1851,15 @@
         Object.values(groupedAPVData).forEach(apv => {
             const card = document.createElement('div');
             card.className = "glass-card p-5 border-l-4 border-l-green-500 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition hover:shadow-md";
+            const apvDeleteRequest = esc(JSON.stringify({
+                poUids: apv.items.map(item => item.uid),
+                refPrUid: apv.refPrUid,
+                legacyBill: apv.legacyBill === true
+            }));
+            const apvDeleteButton = `
+                    <button onclick='deletePO(${apvDeleteRequest})' class="btn-outline-action btn-delete delete-lifecycle-apv whitespace-nowrap w-full md:w-auto justify-center">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> ลบทั้งบิล
+                    </button>`;
             card.innerHTML = `
                 <div>
                     <div class="flex items-center gap-2 mb-1">
@@ -1823,9 +1869,12 @@
                     <p class="text-sm text-gray-600 font-medium flex items-center gap-1.5"><i data-lucide="building-2" class="w-4 h-4 text-gray-400"></i> ${esc(apv.vendor)}</p>
                     <p class="text-xs text-gray-500 mt-2 bg-gray-50 px-2 py-1 rounded inline-block border border-gray-100">จำนวน ${apv.items.length} รายการ (กระทบยอดเรียบร้อย)</p>
                 </div>
-                <button onclick="showNotification('ฟังก์ชันดึงเอกสารอยู่ระหว่างพัฒนา', 'warning')" class="btn-create bg-gray-800 hover:bg-gray-900 shadow-md whitespace-nowrap w-full md:w-auto">
-                    <i data-lucide="download" class="w-4 h-4"></i> ดึงข้อมูลทำจ่าย
-                </button>
+                <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                    ${apvDeleteButton}
+                    <button onclick="showNotification('ฟังก์ชันดึงเอกสารอยู่ระหว่างพัฒนา', 'warning')" class="btn-create bg-gray-800 hover:bg-gray-900 shadow-md whitespace-nowrap w-full md:w-auto">
+                        <i data-lucide="download" class="w-4 h-4"></i> ดึงข้อมูลทำจ่าย
+                    </button>
+                </div>
             `;
             container.appendChild(card);
         });
