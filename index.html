@@ -274,7 +274,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260730.01";
+    const CURRENT_VERSION = "20260730.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -667,6 +667,19 @@
         return String(value || '').trim();
     }
 
+    function removeDeletedBillFromLocalData(payload) {
+        const requestedUids = new Set(normalizeDeletePoUids(payload.poUids));
+        const requestedRefPrUid = normalizeDeleteBillRef(payload.refPrUid);
+        const legacyBill = payload.legacyBill === true;
+        const keepItem = item => legacyBill
+            ? !requestedUids.has(String(item.uid || '').trim())
+            : normalizeDeleteBillRef(item.refPrUid) !== requestedRefPrUid;
+        ['pendingPOs', 'grCompleted', 'apvList'].forEach(key => {
+            appData[key] = (appData[key] || []).filter(keepItem);
+        });
+        processDataAndRender();
+    }
+
     async function apiAction(action, payload) {
         if (await AppVersionGuard.blockIfStale(action)) return { success: false, message: 'พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ' };
         showDataLoading('กำลังประมวลผล...');
@@ -680,36 +693,27 @@
 
             if (action === 'deletePO') {
                 localStorage.removeItem('CACHE_PO_ACTIVE_V3');
-                const reloadSucceeded = await reloadAllPODataAfterDelete();
-                hideDataLoading();
-
                 if (!result.success) {
+                    hideDataLoading();
                     showNotification('เกิดข้อผิดพลาด: ' + (result.message || 'ไม่สามารถลบบิลได้ กรุณาตรวจสอบข้อมูลล่าสุด'), 'error');
                     return result;
                 }
 
                 const requestedUids = normalizeDeletePoUids(payload.poUids);
                 const requestedRefPrUid = normalizeDeleteBillRef(payload.refPrUid);
-                const legacyBill = payload.legacyBill === true;
                 const responseMatchesRequest =
                     Number(result.deletedPOCount || result.deletedCount) >= requestedUids.length &&
                     normalizeDeleteBillRef(result.refPrUid) === requestedRefPrUid;
-                const lifecycleItems = []
-                    .concat(appData.pendingPOs || [])
-                    .concat(appData.grCompleted || [])
-                    .concat(appData.apvList || []);
-                const lifecycleUids = new Set(lifecycleItems.map(po => String(po.uid || '').trim()).filter(Boolean));
-                const deletedUidsStillPresent = requestedUids.some(uid => lifecycleUids.has(uid));
-                const deletedBillRefStillPresent = !legacyBill && lifecycleItems.some(po =>
-                    normalizeDeleteBillRef(po.refPrUid) === requestedRefPrUid
-                );
-
-                if (!reloadSucceeded || !responseMatchesRequest || deletedUidsStillPresent || deletedBillRefStillPresent) {
+                if (!responseMatchesRequest) {
+                    hideDataLoading();
                     showNotification('ไม่สามารถยืนยันผลการลบจากข้อมูลล่าสุดได้ กรุณาตรวจสอบบิลแล้วลองอีกครั้ง', 'error');
                     return { success: false, reason: 'stale_data', message: 'Delete confirmation mismatch' };
                 }
 
+                removeDeletedBillFromLocalData(payload);
+                hideDataLoading();
                 showNotification(result.message || 'ลบบิลสำเร็จ', 'success');
+                loadInitialDataInBackground(true);
                 return result;
             }
 
@@ -840,33 +844,6 @@
             }
         } catch(e) { console.warn('Background Data Sync Error', e); }
         return false;
-    }
-
-    async function reloadAllPODataAfterDelete() {
-        try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({
-                    action: 'getInitialData',
-                    data: { includeProducts: false, includeCompleted: true, bypassCache: true }
-                })
-            });
-            const result = await res.json();
-            if (!result.success) return false;
-
-            appData.prList = result.prList || [];
-            appData.pendingPOs = result.pendingPOs || [];
-            appData.grCompleted = result.grCompleted || [];
-            appData.apvList = result.apvList || [];
-            appData.vendors = result.vendors || appData.vendors || [];
-            poCompletedLoaded = true;
-            processDataAndRender();
-            return true;
-        } catch (error) {
-            console.warn('Full lifecycle delete confirmation failed', error);
-            return false;
-        }
     }
 
     async function loadInitialData(isManualRefresh = false) {
