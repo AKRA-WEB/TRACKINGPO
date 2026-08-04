@@ -7,13 +7,8 @@
   <link rel="preconnect" href="https://script.google.com">
   <title>ระบบจัดซื้อ & APV</title>
   
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script>
-    tailwind.config = {
-      theme: { extend: { colors: { brand: { blue: '#171C8F', blueLight: '#e0e7ff', orange: '#E35205', orangeLight: '#FCECE5'} } } }
-    }
-  </script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <style>
@@ -274,7 +269,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260730.03";
+    const CURRENT_VERSION = "20260804.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -413,8 +408,12 @@
     var DATA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx9AFlNt3s-RVMlgVpC3qqp9kR9aKJbX2XKC_xnLs2ZO666dedQM7pMbs6vtSaOPiw/exec";
     
     var appData = { prList: [], pendingPOs: [], grCompleted: [], apvList: [], vendors: [], products: [] };
-    var poCompletedLoaded = false;
+    var poMatchLoaded = false;
+    var poApvLoaded = false;
     var poProductsLoaded = false;
+    var poSecondaryDataGeneration = 0;
+    var poActiveLoadGeneration = 0;
+    var initialDataPrefetch = null;
     var groupedPOs = [];
     var groupedMatchData = {};
     var groupedAPVData = {};
@@ -449,7 +448,8 @@
         init: async () => {
             const isVersionOk = await checkAppVersion();
             if (!isVersionOk) return;
-            AppVersionGuard.start({ current: CURRENT_VERSION, readActions: [] });
+            AppVersionGuard.start({ current: CURRENT_VERSION, readActions: ['getInitialData', 'getProducts', 'getVendorDeliveryInsights'] });
+            initialDataPrefetch = readApiCall('getInitialData', { includeProducts: false, includeCompleted: false });
 
             lucide.createIcons();
             UI.showLoading();
@@ -648,9 +648,8 @@
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(tabId).classList.remove('hidden');
         document.getElementById(`btn-${tabId}`).classList.add('active');
-        if ((tabId === 'tab-match' || tabId === 'tab-apv') && !poCompletedLoaded) {
-            ensureCompletedLoaded();
-        }
+        if (tabId === 'tab-match' && !poMatchLoaded) ensureMatchLoaded();
+        if (tabId === 'tab-apv' && !poApvLoaded) ensureApvLoaded();
     }
 
     function getSessionToken() {
@@ -761,6 +760,44 @@
         }
     }
 
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function readApiCall(action, payload = null) {
+        if (await AppVersionGuard.blockIfStale(action)) {
+            return { success: false, message: 'พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ' };
+        }
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+            try {
+                const response = await fetch(DATA_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action, data: payload, token: getSessionToken() }),
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error(`HTTP_${response.status}`);
+                const text = await response.text();
+                try {
+                    return JSON.parse(text);
+                } catch (parseError) {
+                    throw new Error('NON_JSON_RESPONSE');
+                }
+            } catch (error) {
+                console.warn('PO read API failed:', { action, attempt, error: error.message || String(error) });
+                if (attempt < 2) {
+                    await delay(1200);
+                    continue;
+                }
+                return { success: false, message: 'ไม่สามารถดึงข้อมูลจากระบบได้ กรุณาลองใหม่' };
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
     async function loadProductsBackground() {
         if (poProductsLoaded) return;
         const cached = getCache('CACHE_PO_PRODUCTS_V1', PO_PRODUCTS_CACHE_TTL);
@@ -773,12 +810,7 @@
             return;
         }
         try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getProducts' })
-            });
-            const result = await res.json();
+            const result = await readApiCall('getProducts', {});
             if (result.success) {
                 setCache('CACHE_PO_PRODUCTS_V1', result);
                 appData.products = result.products || [];
@@ -790,50 +822,55 @@
         } catch(e) { console.warn('Products background load error', e); }
     }
 
-    async function ensureCompletedLoaded() {
-        if (poCompletedLoaded) return;
+    function scheduleProductsBackground() {
+        const load = () => loadProductsBackground();
+        if ('requestIdleCallback' in window) window.requestIdleCallback(load, { timeout: 2000 });
+        else setTimeout(load, 0);
+    }
+
+    async function ensureMatchLoaded() {
+        if (poMatchLoaded) return;
+        const requestGeneration = poSecondaryDataGeneration;
         const matchContainer = document.getElementById('match-container');
-        const apvContainer = document.getElementById('apv-container');
         const loadingHtml = '<p class="text-gray-400 text-center py-10">กำลังโหลดข้อมูล...</p>';
         if (matchContainer) matchContainer.innerHTML = loadingHtml;
+        const result = await readApiCall('getInitialData', { includeProducts: false, includeCompleted: true, includeMatch: true, includeAPV: false });
+        if (requestGeneration !== poSecondaryDataGeneration) return;
+        if (result.success) {
+            appData.grCompleted = result.grCompleted || [];
+            poMatchLoaded = true;
+            groupGRData();
+            document.getElementById('badge-match').innerText = Object.keys(groupedMatchData).length;
+            renderTab3_Match();
+            lucide.createIcons();
+        } else if (matchContainer) {
+            matchContainer.innerHTML = '<p class="text-red-400 text-center py-10">โหลดข้อมูลล้มเหลว กรุณารีเฟรช</p>';
+        }
+    }
+
+    async function ensureApvLoaded() {
+        if (poApvLoaded) return;
+        const requestGeneration = poSecondaryDataGeneration;
+        const apvContainer = document.getElementById('apv-container');
+        const loadingHtml = '<p class="text-gray-400 text-center py-10">กำลังโหลดข้อมูล...</p>';
         if (apvContainer) apvContainer.innerHTML = loadingHtml;
-        try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getInitialData', data: { includeProducts: false, includeCompleted: true } })
-            });
-            const result = await res.json();
-            if (result.success) {
-                appData.grCompleted = result.grCompleted || [];
-                appData.apvList = result.apvList || [];
-                poCompletedLoaded = true;
-                groupGRData();
-                groupAPVData();
-                document.getElementById('badge-match').innerText = Object.keys(groupedMatchData).length;
-                document.getElementById('badge-apv').innerText = Object.keys(groupedAPVData).length;
-                renderTab3_Match();
-                renderTab4_APV();
-                lucide.createIcons();
-            } else {
-                if (matchContainer) matchContainer.innerHTML = '<p class="text-red-400 text-center py-10">โหลดข้อมูลล้มเหลว กรุณารีเฟรช</p>';
-                if (apvContainer) apvContainer.innerHTML = '<p class="text-red-400 text-center py-10">โหลดข้อมูลล้มเหลว กรุณารีเฟรช</p>';
-            }
-        } catch(e) {
-            console.warn('ensureCompletedLoaded error', e);
-            if (matchContainer) matchContainer.innerHTML = '<p class="text-red-400 text-center py-10">โหลดข้อมูลล้มเหลว กรุณารีเฟรช</p>';
-            if (apvContainer) apvContainer.innerHTML = '<p class="text-red-400 text-center py-10">โหลดข้อมูลล้มเหลว กรุณารีเฟรช</p>';
+        const result = await readApiCall('getInitialData', { includeProducts: false, includeCompleted: true, includeMatch: false, includeAPV: true });
+        if (requestGeneration !== poSecondaryDataGeneration) return;
+        if (result.success) {
+            appData.apvList = result.apvList || [];
+            poApvLoaded = true;
+            groupAPVData();
+            document.getElementById('badge-apv').innerText = Object.keys(groupedAPVData).length;
+            renderTab4_APV();
+            lucide.createIcons();
+        } else if (apvContainer) {
+            apvContainer.innerHTML = '<p class="text-red-400 text-center py-10">โหลดข้อมูลล้มเหลว กรุณารีเฟรช</p>';
         }
     }
 
     async function loadInitialDataInBackground(bypassCache = false) {
         try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getInitialData', data: { includeProducts: false, includeCompleted: false, bypassCache } })
-            });
-            const result = await res.json();
+            const result = await readApiCall('getInitialData', { includeProducts: false, includeCompleted: false, bypassCache });
             if (result.success) {
                 setCache('CACHE_PO_ACTIVE_V3', result);
                 appData.prList = result.prList;
@@ -847,6 +884,14 @@
     }
 
     async function loadInitialData(isManualRefresh = false) {
+        const activeLoadGeneration = ++poActiveLoadGeneration;
+        if (isManualRefresh) {
+            poSecondaryDataGeneration += 1;
+            poMatchLoaded = false;
+            poApvLoaded = false;
+            appData.grCompleted = [];
+            appData.apvList = [];
+        }
         const cachedActive = getCache('CACHE_PO_ACTIVE_V3', PO_ACTIVE_CACHE_TTL);
         const cachedProducts = getCache('CACHE_PO_PRODUCTS_V1', PO_PRODUCTS_CACHE_TTL);
         if (cachedActive && !isManualRefresh) {
@@ -857,7 +902,8 @@
                     if (cachedProducts.vendors && cachedProducts.vendors.length > 0) appData.vendors = cachedProducts.vendors;
                     poProductsLoaded = true;
                 }
-                poCompletedLoaded = false;
+                poMatchLoaded = false;
+                poApvLoaded = false;
                 processDataAndRender();
                 showNotification('กำลังอัปเดตข้อมูลล่าสุด...', 'warning');
             } catch (e) { showDataLoading('กำลังโหลดข้อมูล...'); }
@@ -866,26 +912,27 @@
         }
 
         try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getInitialData', data: { includeProducts: false, includeCompleted: false } })
-            });
-            const result = await res.json();
+            const fetchPromise = (!isManualRefresh && initialDataPrefetch)
+                ? initialDataPrefetch
+                : readApiCall('getInitialData', { includeProducts: false, includeCompleted: false });
+            initialDataPrefetch = null;
+            const result = await fetchPromise;
+            if (activeLoadGeneration !== poActiveLoadGeneration) return;
             if (result.success) {
                 setCache('CACHE_PO_ACTIVE_V3', result);
                 appData = { ...result, grCompleted: appData.grCompleted || [], apvList: appData.apvList || [], products: appData.products || [] };
-                poCompletedLoaded = false;
                 processDataAndRender();
-                if (!poProductsLoaded) loadProductsBackground();
+                if (!poProductsLoaded) scheduleProductsBackground();
             } else if (!cachedActive) {
                 showNotification('โหลดข้อมูลล้มเหลว: ' + result.message, 'error');
             }
         } catch(e) {
-            if (!cachedActive) showNotification('ไม่สามารถดึงข้อมูลจากระบบได้', 'error');
+            if (activeLoadGeneration === poActiveLoadGeneration && !cachedActive) {
+                showNotification('ไม่สามารถดึงข้อมูลจากระบบได้', 'error');
+            }
         }
 
-        if (!cachedActive || isManualRefresh) hideDataLoading();
+        if (activeLoadGeneration === poActiveLoadGeneration && (!cachedActive || isManualRefresh)) hideDataLoading();
     }
 
     function processDataAndRender() {
@@ -896,19 +943,24 @@
         renderTab1_PR();
         renderTab2_PO();
 
-        if (poCompletedLoaded) {
+        if (poMatchLoaded) {
             groupGRData();
-            groupAPVData();
             document.getElementById('badge-match').innerText = Object.keys(groupedMatchData).length;
-            document.getElementById('badge-apv').innerText = Object.keys(groupedAPVData).length;
             renderTab3_Match();
+        } else {
+            document.getElementById('badge-match').innerText = '0';
+            const mc = document.getElementById('match-container');
+            if (mc) mc.innerHTML = '<p class="text-gray-400 text-center py-10">กำลังโหลด — คลิกแท็บเพื่อโหลดข้อมูล</p>';
+        }
+
+        if (poApvLoaded) {
+            groupAPVData();
+            document.getElementById('badge-apv').innerText = Object.keys(groupedAPVData).length;
             renderTab4_APV();
         } else {
-            const loadingHtml = '<p class="text-gray-400 text-center py-10">กำลังโหลด — คลิกแท็บเพื่อโหลดข้อมูล</p>';
-            const mc = document.getElementById('match-container');
+            document.getElementById('badge-apv').innerText = '0';
             const ac = document.getElementById('apv-container');
-            if (mc) mc.innerHTML = loadingHtml;
-            if (ac) ac.innerHTML = loadingHtml;
+            if (ac) ac.innerHTML = '<p class="text-gray-400 text-center py-10">กำลังโหลด — คลิกแท็บเพื่อโหลดข้อมูล</p>';
         }
 
         setupVendorAutocomplete();
@@ -1423,12 +1475,7 @@
             </div>
         `;
         try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getVendorDeliveryInsights', token: getSessionToken() })
-            });
-            const result = await res.json();
+            const result = await readApiCall('getVendorDeliveryInsights', {});
             if (!result.success) throw new Error(result.message || 'Load insight failed');
             deliveryInsightData = result;
             renderDeliveryInsights(result);
