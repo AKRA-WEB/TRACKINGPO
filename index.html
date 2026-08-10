@@ -269,7 +269,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260804.01";
+    const CURRENT_VERSION = "20260809.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -398,9 +398,9 @@
     })();
 
     var APP_CONFIG = {
+        APP_ID: "app-po",
         API_URL: "https://script.google.com/macros/s/AKfycbyQJLwb5HTexG6gxqTehGWlAxfSXVT--CpWnnp2JTcP4xCcMA1vUjSY_eWqPjUKwzq7/exec",
-        PORTAL_URL: "https://akra-web.github.io/Main/", 
-        REQUIRED_ROLES: ["ADMIN", "SUPERVISOR", "AKRA", "PURCHASING"],
+        PORTAL_URL: "https://akra-web.github.io/Main/",
         APP_NAME: "ระบบจัดซื้อ (PO)",
         STORAGE_KEY: "akra_po_session_token"
     };
@@ -444,6 +444,10 @@
         }
     };
 
+    function isVerifiedAppSession(data) {
+        return !!(data && data.valid && data.user && data.user.mustChangePassword !== true);
+    }
+
     var AuthGuard = {
         init: async () => {
             const isVersionOk = await checkAppVersion();
@@ -483,15 +487,14 @@
                     return;
                 }
 
-                const rolesParam = APP_CONFIG.REQUIRED_ROLES.join(',');
-                const verifyUrl = `${APP_CONFIG.API_URL}?action=verifyToken&token=${encodeURIComponent(tokenToVerify)}&roles=${encodeURIComponent(rolesParam)}`;
+                const verifyUrl = `${APP_CONFIG.API_URL}?action=verifyToken&token=${encodeURIComponent(tokenToVerify)}&appId=${encodeURIComponent(APP_CONFIG.APP_ID)}`;
 
                 const response = await fetch(verifyUrl);
                 if (!response.ok) throw new Error("API_ERROR");
                 
                 const data = await response.json();
 
-                if (data.valid) {
+                if (isVerifiedAppSession(data)) {
                     localStorage.setItem(APP_CONFIG.STORAGE_KEY, tokenToVerify);
                     window.appSession = data.user;
                     window.currentUser = data.user.name;
@@ -502,7 +505,9 @@
                 } else {
                     let errorMsg = "เซสชันหมดอายุ หรือเซิร์ฟเวอร์ปฏิเสธการเชื่อมต่อ";
                     if (data.reason === 'permission_denied') {
-                        errorMsg = `คุณไม่มีสิทธิ์ระดับ [${APP_CONFIG.REQUIRED_ROLES.join(', ')}] ในการเข้าถึงแอปพลิเคชันนี้`;
+                        errorMsg = "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งานระบบจัดซื้อ (PO)";
+                    } else if (data.reason === 'mandatory_password_change_required' || (data.user && data.user.mustChangePassword === true)) {
+                        errorMsg = "กรุณากลับไปเปลี่ยนรหัสผ่านเริ่มต้นที่ Portal ก่อนใช้งานระบบจัดซื้อ";
                     } else if (data.reason === 'invalid_or_expired_token') {
                         errorMsg = "ข้อมูลการเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบใหม่ผ่าน Portal";
                     }

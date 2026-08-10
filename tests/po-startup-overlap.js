@@ -14,6 +14,8 @@ const verifyAwait = authSource.indexOf('const response = await fetch(verifyUrl)'
 
 assert(prefetchStart >= 0, 'AuthGuard must start the lean initial-data prefetch');
 assert(verifyAwait > prefetchStart, 'initial-data prefetch must start before token verification waits');
+assert(authSource.includes('appId=${encodeURIComponent(APP_CONFIG.APP_ID)}'), 'PO token verification must use the centrally managed app id');
+assert(!authSource.includes('roles=${encodeURIComponent(rolesParam)}'), 'PO token verification must not hardcode entry roles');
 
 const loadStart = html.indexOf('async function loadInitialData(');
 const loadEnd = html.indexOf('\n    function processDataAndRender', loadStart);
