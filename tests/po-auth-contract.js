@@ -8,6 +8,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'version.json'), 'utf8')).version;
 
 assert(html.includes(`const CURRENT_VERSION = "${version}"`), 'PO index.html and version.json must match');
+assert(html.includes('APP_ID: "app-tracking"'), 'PO frontend must verify the stable Main AppConfig entry id');
 const authStart = source.indexOf('function requireAuth(');
 const authEnd = source.indexOf('\n// ==========================================', authStart);
 const authSource = source.slice(authStart, authEnd);
@@ -17,6 +18,7 @@ assert(
   authSource.includes('encodeURIComponent(opts.appId)'),
   'shared backend authorization must request the app id declared by each protected action'
 );
+assert(authSource.includes('opts.permAppId || opts.appId'), 'shared backend must keep entry app ids separate from permission namespaces');
 
 const context = vm.createContext({
   console,
@@ -101,8 +103,9 @@ const grRecallNonPrivileged = vm.runInContext(`requireAuth('fixture-token', PROT
 assert.strictEqual(grRecallNonPrivileged.error.reason, 'permission_denied', 'GR recall must reject approveGR without a privileged role');
 
 const poCreateAllowed = vm.runInContext(`requireAuth('fixture-token', PROTECTED_ACTIONS.createPO, {})`, context);
-assert(poCreateAllowed.user, 'PO create must continue to authorize through app-po/createPO');
-assert(requestedUrls.at(-1).includes('appId=app-po'), 'PO mutations must continue to ask Main for app-po access');
+assert(poCreateAllowed.user, 'PO create must authorize through app-tracking entry and app-po/createPO permission');
+assert(requestedUrls.at(-1).includes('appId=app-tracking'), 'PO mutations must ask Main for the registered TrackingPO app id');
+assert.strictEqual(vm.runInContext('PROTECTED_ACTIONS.createPO.permAppId', context), 'app-po', 'PO granular permissions must remain in the app-po namespace');
 
 poRoles = ['SUPERVISOR'];
 poPerms = [];
