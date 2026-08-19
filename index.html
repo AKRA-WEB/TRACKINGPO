@@ -8,6 +8,7 @@
   <title>ระบบจัดซื้อ & APV</title>
   
   <link rel="stylesheet" href="styles.css">
+  <script src="js/supabase-po-client.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
@@ -779,6 +780,19 @@
     }
 
     async function readApiCall(action, payload = null) {
+        if (typeof window !== "undefined" && window.AkraSupabasePO && (action === 'getInitialData' || action === 'getProducts')) {
+            try {
+                if (action === 'getInitialData') {
+                    const supa = await AkraSupabasePO.getInitialData(payload || {});
+                    return { success: true, pendingPOs: supa.activeBills || [], grCompleted: supa.completedBills || [], vendors: supa.vendors || [], apvList: [], prList: [] };
+                } else if (action === 'getProducts') {
+                    const prods = await AkraSupabasePO.searchProducts('');
+                    return { success: true, products: prods, vendors: [] };
+                }
+            } catch (supaErr) {
+                console.warn('Supabase PO read error, falling back to GAS:', supaErr);
+            }
+        }
         if (await AppVersionGuard.blockIfStale(action)) {
             return { success: false, message: 'พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ' };
         }
