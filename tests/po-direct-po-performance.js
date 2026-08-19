@@ -12,8 +12,8 @@ const versionJsonPath = path.join(__dirname, '..', 'version.json');
 const versionJson = JSON.parse(fs.readFileSync(versionJsonPath, 'utf8'));
 
 // 1. Version consistency check
-assert.strictEqual(versionJson.version, '20260819.02', 'version.json must match 20260819.02');
-assert(html.includes('const CURRENT_VERSION = "20260819.02";'), 'index.html must define CURRENT_VERSION 20260819.02');
+assert.ok(versionJson.version, 'version.json must have version');
+assert(html.includes(`const CURRENT_VERSION = "${versionJson.version}";`), 'index.html and version.json must match');
 
 // 2. Client-side mutation timeout contract
 assert(html.includes('const PO_MUTATION_TIMEOUT_MS = 50000;'), 'apiAction must define 50s mutation timeout');
