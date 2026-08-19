@@ -269,7 +269,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260819.01";
+    const CURRENT_VERSION = "20260819.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -684,22 +684,27 @@
         processDataAndRender();
     }
 
+    const PO_MUTATION_TIMEOUT_MS = 50000;
+
     async function apiAction(action, payload) {
-        if (await AppVersionGuard.blockIfStale(action)) return { success: false, message: 'พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ' };
-        showDataLoading('กำลังประมวลผล...');
+        if (await AppVersionGuard.blockIfStale(action)) return { success: false, message: "พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ" };
+        showDataLoading("กำลังประมวลผล...");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), PO_MUTATION_TIMEOUT_MS);
         try {
             const res = await fetch(DATA_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action, data: payload, token: getSessionToken() })
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ action, data: payload, token: getSessionToken() }),
+                signal: controller.signal
             });
             const result = await res.json();
 
-            if (action === 'deletePO') {
-                localStorage.removeItem('CACHE_PO_ACTIVE_V3');
+            if (action === "deletePO") {
+                localStorage.removeItem("CACHE_PO_ACTIVE_V3");
                 if (!result.success) {
                     hideDataLoading();
-                    showNotification('เกิดข้อผิดพลาด: ' + (result.message || 'ไม่สามารถลบบิลได้ กรุณาตรวจสอบข้อมูลล่าสุด'), 'error');
+                    showNotification("เกิดข้อผิดพลาด: " + (result.message || "ไม่สามารถลบบิลได้ กรุณาตรวจสอบข้อมูลล่าสุด"), "error");
                     return result;
                 }
 
@@ -710,13 +715,13 @@
                     normalizeDeleteBillRef(result.refPrUid) === requestedRefPrUid;
                 if (!responseMatchesRequest) {
                     hideDataLoading();
-                    showNotification('ไม่สามารถยืนยันผลการลบจากข้อมูลล่าสุดได้ กรุณาตรวจสอบบิลแล้วลองอีกครั้ง', 'error');
-                    return { success: false, reason: 'stale_data', message: 'Delete confirmation mismatch' };
+                    showNotification("ไม่สามารถยืนยันผลการลบจากข้อมูลล่าสุดได้ กรุณาตรวจสอบบิลแล้วลองอีกครั้ง", "error");
+                    return { success: false, reason: "stale_data", message: "Delete confirmation mismatch" };
                 }
 
                 removeDeletedBillFromLocalData(payload);
                 hideDataLoading();
-                showNotification(result.message || 'ลบบิลสำเร็จ', 'success');
+                showNotification(result.message || "ลบบิลสำเร็จ", "success");
                 loadInitialDataInBackground(true);
                 return result;
             }
@@ -725,30 +730,34 @@
             hideDataLoading();
 
             if(result.success) {
-                showNotification(result.message || 'ดำเนินการสำเร็จ', 'success');
+                showNotification(result.message || "ดำเนินการสำเร็จ", "success");
 
                 // [เทคนิค Optimistic Update] ลบข้อมูลที่ทำรายการแล้วออกจากหน้าจอทันที แอปจะดูไวขึ้น 300%
-                if (action === 'rejectPR' || action === 'approvePR') {
+                if (action === "rejectPR" || action === "approvePR") {
                     const rowToRemove = payload.rowNumber || payload.prRowNumber;
                     appData.prList = appData.prList.filter(pr => pr.rowNumber !== rowToRemove);
                     processDataAndRender();
-                } else if (action === 'closePO') {
+                } else if (action === "closePO") {
                     const rowsToRemove = payload.items.map(i => i.rowNumber);
                     appData.grCompleted = appData.grCompleted.filter(po => !rowsToRemove.includes(po.rowNumber));
                     processDataAndRender();
                 }
                 
                 // สั่งดึงข้อมูลใหม่มาเซฟทับแบบเงียบๆ เบื้องหลัง (Background Sync)
-                loadInitialDataInBackground(true); 
+                loadInitialDataInBackground(true);
             } else {
-                showNotification('เกิดข้อผิดพลาด: ' + result.message, 'error');
+                showNotification("เกิดข้อผิดพลาด: " + result.message, "error");
             }
             return result;
         } catch(e) {
-            console.warn('API Error:', e);
-            showNotification('การเชื่อมต่อกับเซิร์ฟเวอร์ล้มเหลว', 'error');
+            console.warn("API Error:", e);
+            const isTimeout = e && e.name === "AbortError";
+            const errorMsg = isTimeout ? "การทำรายการใช้เวลานานเกินไป กรุณารีเฟรชเพื่อตรวจสอบสถานะล่าสุด" : "การเชื่อมต่อกับเซิร์ฟเวอร์ล้มเหลว";
+            showNotification(errorMsg, "error");
             hideDataLoading();
-            return { success: false, message: 'การเชื่อมต่อกับเซิร์ฟเวอร์ล้มเหลว' };
+            return { success: false, message: errorMsg, isTimeout: isTimeout };
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
@@ -1010,34 +1019,41 @@
 
     function setupProductAutocompleteForPO(inputEl) {
         const suggestionBox = inputEl.nextElementSibling.nextElementSibling;
-        inputEl.addEventListener('input', function() {
+        let debounceTimer = null;
+        inputEl.addEventListener("input", function() {
+            clearTimeout(debounceTimer);
             const val = this.value.trim().toLowerCase();
-            suggestionBox.innerHTML = '';
-            if (!val || !appData.products || appData.products.length === 0) { suggestionBox.classList.add('hidden'); return; }
-            
-            const filtered = appData.products.filter(p => p.name.toLowerCase().includes(val)).slice(0, 15);
-            if (filtered.length === 0) { suggestionBox.classList.add('hidden'); return; }
-            
-            filtered.forEach(p => {
-                const li = document.createElement('li');
-                li.className = 'px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center';
-                li.innerHTML = `<span>${esc(p.name)}</span> <span class="text-[10px] text-gray-400 truncate max-w-[120px]">${esc(p.vendor || '')}</span>`;
-                li.onmousedown = function(e) {
-                    e.preventDefault(); 
-                    inputEl.value = p.name;
-                    const row = inputEl.closest('.create-po-item-row');
-                    row.querySelector('.c-sku').value = p.sku || ''; 
-                    row.querySelector('.c-unit').value = p.unit || ''; 
-                    if (p.vendor) { document.getElementById('create-po-vendor').value = p.vendor; }
-                    row.querySelector('.c-qty').focus();
-                    suggestionBox.classList.add('hidden');
-                };
-                suggestionBox.appendChild(li);
-            });
-            suggestionBox.classList.remove('hidden');
+            if (!val || !appData.products || appData.products.length === 0) {
+                suggestionBox.innerHTML = "";
+                suggestionBox.classList.add("hidden");
+                return;
+            }
+            debounceTimer = setTimeout(() => {
+                suggestionBox.innerHTML = "";
+                const filtered = appData.products.filter(p => p.name && p.name.toLowerCase().includes(val)).slice(0, 15);
+                if (filtered.length === 0) { suggestionBox.classList.add("hidden"); return; }
+                
+                filtered.forEach(p => {
+                    const li = document.createElement("li");
+                    li.className = "px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center";
+                    li.innerHTML = `<span>${esc(p.name)}</span> <span class="text-[10px] text-gray-400 truncate max-w-[120px]">${esc(p.vendor || "")}</span>`;
+                    li.onmousedown = function(e) {
+                        e.preventDefault();
+                        inputEl.value = p.name;
+                        const row = inputEl.closest(".create-po-item-row");
+                        row.querySelector(".c-sku").value = p.sku || "";
+                        row.querySelector(".c-unit").value = p.unit || "";
+                        if (p.vendor) { document.getElementById("create-po-vendor").value = p.vendor; }
+                        row.querySelector(".c-qty").focus();
+                        suggestionBox.classList.add("hidden");
+                    };
+                    suggestionBox.appendChild(li);
+                });
+                suggestionBox.classList.remove("hidden");
+            }, 100);
         });
-        inputEl.addEventListener('blur', () => setTimeout(() => suggestionBox.classList.add('hidden'), 200));
-        inputEl.addEventListener('focus', function() { if (this.value && suggestionBox.children.length > 0) suggestionBox.classList.remove('hidden'); });
+        inputEl.addEventListener("blur", () => setTimeout(() => suggestionBox.classList.add("hidden"), 200));
+        inputEl.addEventListener("focus", function() { if (this.value && suggestionBox.children.length > 0) suggestionBox.classList.remove("hidden"); });
     }
 
     // =========================================================================
@@ -1248,55 +1264,121 @@
         lucide.createIcons({ root: div });
     }
 
+    let isSubmittingDirectPO = false;
     async function submitDirectPO(e) {
         e.preventDefault();
-        const vendor = document.getElementById('create-po-vendor').value.trim();
-        const warehouse = document.getElementById('create-po-warehouse').value;
-        const expectedDate = document.getElementById('create-po-expected-date').value;
-        const form = document.getElementById('form-create-po');
+        if (isSubmittingDirectPO) return;
+        const vendor = document.getElementById("create-po-vendor").value.trim();
+        const warehouse = document.getElementById("create-po-warehouse").value;
+        const expectedDate = document.getElementById("create-po-expected-date").value;
+        const form = document.getElementById("form-create-po");
 
-        if(!vendor || !warehouse) return showNotification('กรุณาเลือก Vendor และคลังสินค้าให้ครบถ้วน', 'warning');
+        if(!vendor || !warehouse) return showNotification("กรุณาเลือก Vendor และคลังสินค้าให้ครบถ้วน", "warning");
 
         const items = [];
         let hasError = false;
-        document.querySelectorAll('.create-po-item-row').forEach(row => {
-            const product = row.querySelector('.c-product').value.trim();
-            const quantity = row.querySelector('.c-qty').value.trim();
-            const sku = row.querySelector('.c-sku').value.trim();
-            const unit = row.querySelector('.c-unit').value.trim();
+        document.querySelectorAll(".create-po-item-row").forEach(row => {
+            const product = row.querySelector(".c-product").value.trim();
+            const quantity = row.querySelector(".c-qty").value.trim();
+            const sku = row.querySelector(".c-sku").value.trim();
+            const unit = row.querySelector(".c-unit").value.trim();
             
             if(!product || !quantity) hasError = true;
             else items.push({ sku, product, quantity, unit });
         });
 
-        if(hasError || items.length === 0) return showNotification('กรุณากรอกข้อมูลสินค้าให้ครบถ้วน', 'warning');
+        if(hasError || items.length === 0) return showNotification("กรุณากรอกข้อมูลสินค้าให้ครบถ้วน", "warning");
 
-        const refPrRow = document.getElementById('c-ref-pr-row').value;
+        const refPrRow = document.getElementById("c-ref-pr-row").value;
         const prUid = form.dataset.pruid || form.dataset.prUid;
         const refPrUid = form.dataset.refPrUid || "";
 
-        const needPerm = (form.dataset.mode === 'edit') ? 'createPO' : (refPrRow ? 'approvePR' : 'createPO');
-        if (!can(needPerm)) return showNotification('ไม่มีสิทธิ์ดำเนินการนี้', 'error');
+        const needPerm = (form.dataset.mode === "edit") ? "createPO" : (refPrRow ? "approvePR" : "createPO");
+        if (!can(needPerm)) return showNotification("ไม่มีสิทธิ์ดำเนินการนี้", "error");
 
-        document.getElementById('btn-submit-direct-po').disabled = true;
-        const originalBtnText = document.getElementById('btn-submit-direct-po').innerText;
-        document.getElementById('btn-submit-direct-po').innerHTML = '<div class="spinner spinner-sm mr-2 border-t-white"></div> บันทึก...';
+        const submitBtn = document.getElementById("btn-submit-direct-po");
+        submitBtn.disabled = true;
+        const originalBtnText = submitBtn.innerText;
+        submitBtn.innerHTML = '<div class="spinner spinner-sm mr-2 border-t-white"></div> บันทึก...';
+        isSubmittingDirectPO = true;
 
-        if (form.dataset.mode === 'edit') {
-            const oldPoUids = JSON.parse(form.dataset.oldUids);
-            const poNumber = form.dataset.poNumber;
-            await apiAction('updatePO', { oldPoUids, vendor, warehouse, poNumber, expectedDate, items, prUid, refPrUid });
-        } else if (refPrRow) {
-            await apiAction('approvePR', {
-                prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
-            });
-        } else {
-            await apiAction('createPO', { vendor, poNumber: "", warehouse, expectedDate, items });
+        try {
+            let res;
+            if (form.dataset.mode === "edit") {
+                const oldPoUids = JSON.parse(form.dataset.oldUids);
+                const poNumber = form.dataset.poNumber;
+                res = await apiAction("updatePO", { oldPoUids, vendor, warehouse, poNumber, expectedDate, items, prUid, refPrUid });
+                if (res && res.success) {
+                    const oldUidsSet = new Set(oldPoUids);
+                    appData.pendingPOs = (appData.pendingPOs || []).filter(po => !oldUidsSet.has(po.uid));
+                    const todayStr = new Date().toLocaleDateString("en-GB");
+                    const updatedItems = items.map((it, idx) => ({
+                        uid: (res.poUids && res.poUids[idx]) || ("po-upd-" + Date.now() + "-" + idx),
+                        refPrUid: refPrUid || ("DIRECT-" + Date.now()),
+                        rowNumber: 99999 + idx,
+                        poDate: todayStr,
+                        poNumber: poNumber || "",
+                        vendor: vendor,
+                        warehouse: warehouse,
+                        expectedDate: expectedDate,
+                        sku: it.sku || "",
+                        product: it.product,
+                        quantity: it.quantity,
+                        unit: it.unit || "",
+                        remark: isDirectBillRefUid(refPrUid) ? "Direct PO (Edited)" : "Ref PR",
+                        status: "Pending GR",
+                        displayStatus: "Pending GR",
+                        grQty: "", locIn: "", exp: "", ata: "", receiverName: "", leadtime: "", oldStock: "",
+                        billReceivingStarted: false,
+                        billHasCompletedSibling: false
+                    }));
+                    appData.pendingPOs.push(...updatedItems);
+                    processDataAndRender();
+                    closeCreatePoModal();
+                }
+            } else if (refPrRow) {
+                res = await apiAction("approvePR", {
+                    prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
+                });
+                if (res && res.success) {
+                    closeCreatePoModal();
+                }
+            } else {
+                res = await apiAction("createPO", { vendor, poNumber: "", warehouse, expectedDate, items });
+                if (res && res.success) {
+                    const directRef = res.directBillRefUid || ("DIRECT-" + Date.now());
+                    const todayStr = new Date().toLocaleDateString("en-GB");
+                    const newPendingItems = items.map((it, idx) => ({
+                        uid: (res.poUids && res.poUids[idx]) || ("po-new-" + Date.now() + "-" + idx),
+                        refPrUid: directRef,
+                        rowNumber: 99999 + idx,
+                        poDate: todayStr,
+                        poNumber: "",
+                        vendor: vendor,
+                        warehouse: warehouse,
+                        expectedDate: expectedDate,
+                        sku: it.sku || "",
+                        product: it.product,
+                        quantity: it.quantity,
+                        unit: it.unit || "",
+                        remark: "Direct PO",
+                        status: "Pending GR",
+                        displayStatus: "Pending GR",
+                        grQty: "", locIn: "", exp: "", ata: "", receiverName: "", leadtime: "", oldStock: "",
+                        billReceivingStarted: false,
+                        billHasCompletedSibling: false
+                    }));
+                    appData.pendingPOs = appData.pendingPOs || [];
+                    appData.pendingPOs.unshift(...newPendingItems);
+                    processDataAndRender();
+                    closeCreatePoModal();
+                }
+            }
+        } finally {
+            isSubmittingDirectPO = false;
+            submitBtn.disabled = false;
+            submitBtn.innerText = originalBtnText;
         }
-
-        closeCreatePoModal();
-        document.getElementById('btn-submit-direct-po').disabled = false;
-        document.getElementById('btn-submit-direct-po').innerText = originalBtnText;
     }
 
     // =========================================================================
