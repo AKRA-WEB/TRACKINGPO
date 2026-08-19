@@ -269,7 +269,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260810.01";
+    const CURRENT_VERSION = "20260819.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -739,7 +739,7 @@
                 }
                 
                 // สั่งดึงข้อมูลใหม่มาเซฟทับแบบเงียบๆ เบื้องหลัง (Background Sync)
-                loadInitialDataInBackground(); 
+                loadInitialDataInBackground(true); 
             } else {
                 showNotification('เกิดข้อผิดพลาด: ' + result.message, 'error');
             }
@@ -752,7 +752,7 @@
         }
     }
 
-    const PO_ACTIVE_CACHE_TTL = 15 * 60 * 1000;
+    const PO_ACTIVE_CACHE_TTL = 60 * 1000;
     const PO_PRODUCTS_CACHE_TTL = 2 * 60 * 60 * 1000;
     function getCache(key, ttlMs) { try { const raw = localStorage.getItem(key); if (!raw) return null; const w = JSON.parse(raw); if (Date.now() - (w._ts||0) > ttlMs) { localStorage.removeItem(key); return null; } return w._d; } catch(e) { localStorage.removeItem(key); return null; } }
     function setCache(key, data) {
@@ -919,7 +919,7 @@
         try {
             const fetchPromise = (!isManualRefresh && initialDataPrefetch)
                 ? initialDataPrefetch
-                : readApiCall('getInitialData', { includeProducts: false, includeCompleted: false });
+                : readApiCall('getInitialData', { includeProducts: false, includeCompleted: false, bypassCache: isManualRefresh });
             initialDataPrefetch = null;
             const result = await fetchPromise;
             if (activeLoadGeneration !== poActiveLoadGeneration) return;
