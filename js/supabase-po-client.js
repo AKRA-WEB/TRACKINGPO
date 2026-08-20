@@ -41,23 +41,67 @@
     }
 
     /**
+     * Get All Master Products for Fast Client Autocomplete (4,799 SKUs)
+     */
+    async function getProducts() {
+        try {
+            const pages = [0, 1000, 2000, 3000, 4000, 5000];
+            const promises = pages.map(offset => {
+                return supabaseRest(`products?select=sku,name,unit,category,default_vendor,is_active&order=name.asc&offset=${offset}&limit=1000`);
+            });
+            const results = await Promise.all(promises);
+            const flat = results.flat().filter(Boolean);
+            return flat.map(p => ({
+                sku: p.sku,
+                product_name: p.name,
+                name: p.name,
+                unit: p.unit || 'ชิ้น',
+                category: p.category || '',
+                vendor: p.default_vendor || '',
+                default_vendor: p.default_vendor || '',
+                active: p.is_active !== false
+            }));
+        } catch (e) {
+            console.warn('Error fetching all products from Supabase:', e);
+            const items = await supabaseRest('products?select=sku,name,unit,category,default_vendor,is_active&order=name.asc&limit=1000');
+            return (items || []).map(p => ({
+                sku: p.sku,
+                product_name: p.name,
+                name: p.name,
+                unit: p.unit || 'ชิ้น',
+                category: p.category || '',
+                vendor: p.default_vendor || '',
+                default_vendor: p.default_vendor || '',
+                active: p.is_active !== false
+            }));
+        }
+    }
+
+    /**
      * Instant Autocomplete Search on Products Table via GIN Index (<25ms)
+     * Supports Multi-Word Search (Tokens)
      */
     async function searchProducts(query = '', limit = 50) {
         const clean = String(query || '').trim();
+        if (!clean) {
+            return getProducts();
+        }
+        const tokens = clean.split(/\s+/).filter(Boolean);
         let filter = `order=name.asc&limit=${limit}`;
-        if (clean) {
-            filter = `or=(sku.ilike.*${encodeURIComponent(clean)}*,name.ilike.*${encodeURIComponent(clean)}*)&${filter}`;
+        if (tokens.length === 1) {
+            const t = tokens[0];
+            filter = `or=(sku.ilike.*${encodeURIComponent(t)}*,name.ilike.*${encodeURIComponent(t)}*,default_vendor.ilike.*${encodeURIComponent(t)}*)&${filter}`;
         } else {
-            filter = `order=name.asc&limit=2000`;
+            const andClauses = tokens.map(t => `or(sku.ilike.*${encodeURIComponent(t)}*,name.ilike.*${encodeURIComponent(t)}*,default_vendor.ilike.*${encodeURIComponent(t)}*)`).join(',');
+            filter = `and=(${andClauses})&${filter}`;
         }
         const items = await supabaseRest(`products?${filter}`);
         return (items || []).map(p => ({
             sku: p.sku,
             product_name: p.name,
             name: p.name,
-            unit: p.unit,
-            category: p.category,
+            unit: p.unit || 'ชิ้น',
+            category: p.category || '',
             vendor: p.default_vendor || '',
             default_vendor: p.default_vendor || ''
         }));
@@ -235,6 +279,7 @@
 
     return {
         getInitialData,
+        getProducts,
         searchProducts,
         saveDirectPO,
         deleteBill,

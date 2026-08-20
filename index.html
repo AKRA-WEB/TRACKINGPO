@@ -270,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260820.03";
+    const CURRENT_VERSION = "20260820.04";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -880,8 +880,13 @@
                     });
                     return { success: true, pendingPOs: flatPending, grCompleted: supa.completedBills || [], vendors: supa.vendors || [], apvList: [], prList: [] };
                 } else if (action === 'getProducts') {
-                    const prods = await AkraSupabasePO.searchProducts('');
-                    return { success: true, products: prods, vendors: [] };
+                    const prods = await AkraSupabasePO.getProducts();
+                    const vendorSet = new Set();
+                    (prods || []).forEach(p => {
+                        const v = p.vendor || p.default_vendor;
+                        if (v) vendorSet.add(v);
+                    });
+                    return { success: true, products: prods, vendors: Array.from(vendorSet) };
                 }
             } catch (supaErr) {
                 console.warn('Supabase PO read error, falling back to GAS:', supaErr);
@@ -921,11 +926,13 @@
     }
 
     async function loadProductsBackground() {
-        if (poProductsLoaded) return;
-        const cached = getCache('CACHE_PO_PRODUCTS_V1', PO_PRODUCTS_CACHE_TTL);
-        if (cached) {
+        if (poProductsLoaded && appData.products && appData.products.length > 1000) return;
+        const cached = getCache('CACHE_PO_PRODUCTS_V2', PO_PRODUCTS_CACHE_TTL);
+        if (cached && cached.products && cached.products.length > 1000) {
             appData.products = cached.products || [];
-            if (cached.vendors && cached.vendors.length > 0) appData.vendors = cached.vendors;
+            if (cached.vendors && cached.vendors.length > 0) {
+                appData.vendors = Array.from(new Set([...(appData.vendors || []), ...cached.vendors]));
+            }
             poProductsLoaded = true;
             renderTab1_PR();
             lucide.createIcons();
@@ -933,10 +940,12 @@
         }
         try {
             const result = await readApiCall('getProducts', {});
-            if (result.success) {
-                setCache('CACHE_PO_PRODUCTS_V1', result);
+            if (result.success && result.products && result.products.length > 0) {
+                setCache('CACHE_PO_PRODUCTS_V2', result);
                 appData.products = result.products || [];
-                if (result.vendors && result.vendors.length > 0) appData.vendors = result.vendors;
+                if (result.vendors && result.vendors.length > 0) {
+                    appData.vendors = Array.from(new Set([...(appData.vendors || []), ...result.vendors]));
+                }
                 poProductsLoaded = true;
                 renderTab1_PR();
                 lucide.createIcons();
@@ -1015,13 +1024,15 @@
             appData.apvList = [];
         }
         const cachedActive = getCache('CACHE_PO_ACTIVE_V3', PO_ACTIVE_CACHE_TTL);
-        const cachedProducts = getCache('CACHE_PO_PRODUCTS_V1', PO_PRODUCTS_CACHE_TTL);
+        const cachedProducts = getCache('CACHE_PO_PRODUCTS_V2', PO_PRODUCTS_CACHE_TTL);
         if (cachedActive && !isManualRefresh) {
             try {
                 appData = { ...cachedActive, grCompleted: [], apvList: [] };
-                if (cachedProducts) {
+                if (cachedProducts && cachedProducts.products && cachedProducts.products.length > 1000) {
                     appData.products = cachedProducts.products || [];
-                    if (cachedProducts.vendors && cachedProducts.vendors.length > 0) appData.vendors = cachedProducts.vendors;
+                    if (cachedProducts.vendors && cachedProducts.vendors.length > 0) {
+                        appData.vendors = Array.from(new Set([...(appData.vendors || []), ...cachedProducts.vendors]));
+                    }
                     poProductsLoaded = true;
                 }
                 poMatchLoaded = false;
@@ -1044,7 +1055,7 @@
                 setCache('CACHE_PO_ACTIVE_V3', result);
                 appData = { ...result, grCompleted: appData.grCompleted || [], apvList: appData.apvList || [], products: appData.products || [] };
                 processDataAndRender();
-                if (!poProductsLoaded) scheduleProductsBackground();
+                if (!poProductsLoaded || !appData.products || appData.products.length <= 1000) scheduleProductsBackground();
             } else if (!cachedActive) {
                 showNotification('โหลดข้อมูลล้มเหลว: ' + result.message, 'error');
             }
@@ -1133,16 +1144,26 @@
         async function doSearch(val) {
             suggestionBox.innerHTML = "";
             let filtered = [];
+            const tokens = val.toLowerCase().split(/\s+/).filter(Boolean);
 
-            // 1. Search in-memory products
-            if (appData.products && appData.products.length > 0) {
-                filtered = appData.products.filter(p => (p.name && p.name.toLowerCase().includes(val)) || (p.sku && p.sku.toLowerCase().includes(val))).slice(0, 15);
+            // 1. Search in-memory products across full catalog (multi-token support)
+            if (tokens.length > 0 && appData.products && appData.products.length > 0) {
+                for (let i = 0; i < appData.products.length; i++) {
+                    const p = appData.products[i];
+                    const name = (p.name || p.product_name || '').toLowerCase();
+                    const sku = (p.sku || '').toLowerCase();
+                    const vendor = (p.vendor || p.default_vendor || '').toLowerCase();
+                    if (tokens.every(t => name.includes(t) || sku.includes(t) || vendor.includes(t))) {
+                        filtered.push(p);
+                        if (filtered.length >= 30) break;
+                    }
+                }
             }
 
-            // 2. If nothing found in memory or empty catalog, query Supabase live
+            // 2. If nothing found or catalog not yet fully loaded, query Supabase live
             if (filtered.length === 0 && typeof window !== "undefined" && window.AkraSupabasePO) {
                 try {
-                    filtered = await AkraSupabasePO.searchProducts(val, 15);
+                    filtered = await AkraSupabasePO.searchProducts(val, 30);
                 } catch(e) {
                     console.warn('Live search error:', e);
                 }
