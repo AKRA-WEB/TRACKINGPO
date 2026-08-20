@@ -867,7 +867,14 @@
                                 status: item.status || bill.status || 'Pending GR',
                                 displayStatus: item.displayStatus || bill.status || 'Pending GR',
                                 remark: bill.remark || '',
-                                expectedDate: item.expectedDate || bill.expectedDate || ''
+                                expectedDate: item.expectedDate || bill.expectedDate || '',
+                                grQty: item.grQty || '',
+                                locIn: item.locIn || '',
+                                exp: item.exp || '',
+                                oldStock: item.oldStock || '',
+                                ata: item.ata || bill.ata || '',
+                                receiverName: item.receiverName || bill.receiverName || '',
+                                leadtime: item.leadtime || ''
                             });
                         });
                     });

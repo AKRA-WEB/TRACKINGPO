@@ -63,38 +63,89 @@
         }));
     }
 
-    /**
-     * Fetch Initial Active Data for Purchasing Dashboard
-     */
-    async function getInitialData() {
-        const [activeOrders, vendors, prList] = await Promise.all([
-            supabaseRest('purchase_orders?status=in.(Pending Review,Pending GR,Partial GR)&select=*,items:purchase_order_items(*)&order=created_at.desc'),
-            supabaseRest('vendors?is_active=eq.true&select=name&order=name.asc'),
-            supabaseRest('purchase_requests?status=eq.Approved&select=*&order=created_at.desc').catch(() => [])
-        ]);
+    function formatIsoToDdMmYyyy(isoDate) {
+        if (!isoDate) return '';
+        const clean = String(isoDate).trim().split('T')[0];
+        const parts = clean.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return isoDate;
+    }
 
-        // Transform into PO dashboard shape
-        const activeBills = (activeOrders || []).map(po => ({
+    function mapPoToDashboardBill(po) {
+        const receipts = po.receipts || [];
+        const primaryReceipt = receipts[0] || null;
+
+        return {
             id: po.id,
             poNumber: po.po_number,
-            poDate: po.po_date,
+            poDate: po.po_date ? formatIsoToDdMmYyyy(po.po_date) : '',
             refPrUid: po.ref_pr_uid,
             vendor: po.vendor_name,
             warehouse: po.warehouse,
             status: po.status,
             remark: po.remark,
-            items: (po.items || []).map(item => ({
-                id: item.id,
-                uid: item.legacy_uid || item.id,
-                sku: item.sku,
-                productName: item.product_name,
-                poQty: Number(item.po_qty),
-                unit: item.unit,
-                expectedDate: item.expected_date,
-                status: item.status
-            }))
-        }));
+            ata: primaryReceipt?.ata_date ? formatIsoToDdMmYyyy(primaryReceipt.ata_date) : '',
+            receiverName: primaryReceipt?.receiver || '',
+            items: (po.items || []).map(item => {
+                let matchedGrItem = null;
+                let matchedReceipt = null;
+                for (const rec of receipts) {
+                    for (const grIt of (rec.gr_items || [])) {
+                        if ((grIt.po_item_id && grIt.po_item_id === item.id) ||
+                            (grIt.ref_po_item_uid && grIt.ref_po_item_uid === (item.legacy_uid || item.id))) {
+                            matchedGrItem = grIt;
+                            matchedReceipt = rec;
+                            break;
+                        }
+                    }
+                    if (matchedGrItem) break;
+                }
 
+                const grQty = matchedGrItem && matchedGrItem.gr_qty !== null && matchedGrItem.gr_qty !== undefined ? String(matchedGrItem.gr_qty) : '';
+                const locIn = matchedGrItem?.location_in || '';
+                const exp = matchedGrItem?.exp_date ? formatIsoToDdMmYyyy(matchedGrItem.exp_date) : '';
+                const oldStock = matchedGrItem && matchedGrItem.old_stock ? String(matchedGrItem.old_stock) : '';
+                const leadtime = matchedGrItem && matchedGrItem.leadtime_days !== null && matchedGrItem.leadtime_days !== undefined ? String(matchedGrItem.leadtime_days) : '';
+                const itemAta = matchedReceipt?.ata_date ? formatIsoToDdMmYyyy(matchedReceipt.ata_date) : (primaryReceipt?.ata_date ? formatIsoToDdMmYyyy(primaryReceipt.ata_date) : '');
+                const itemReceiver = matchedReceipt?.receiver || primaryReceipt?.receiver || '';
+
+                return {
+                    id: item.id,
+                    uid: item.legacy_uid || item.id,
+                    sku: item.sku,
+                    productName: item.product_name,
+                    product: item.product_name,
+                    quantity: Number(item.po_qty),
+                    poQty: Number(item.po_qty),
+                    unit: item.unit || 'ชิ้น',
+                    expectedDate: item.expected_date ? formatIsoToDdMmYyyy(item.expected_date) : (po.expected_date ? formatIsoToDdMmYyyy(po.expected_date) : ''),
+                    status: item.status || po.status,
+                    grQty: grQty,
+                    locIn: locIn,
+                    exp: exp,
+                    oldStock: oldStock,
+                    leadtime: leadtime,
+                    ata: itemAta,
+                    receiverName: itemReceiver
+                };
+            }),
+            receipts: receipts
+        };
+    }
+
+    /**
+     * Fetch Initial Active Data for Purchasing Dashboard
+     */
+    async function getInitialData() {
+        const [activeOrders, vendors, prList] = await Promise.all([
+            supabaseRest('purchase_orders?status=in.(Pending Review,Pending GR,Partial GR)&select=*,items:purchase_order_items(*),receipts:goods_receipts(*,gr_items:goods_receipt_items(*))&order=created_at.desc'),
+            supabaseRest('vendors?is_active=eq.true&select=name&order=name.asc'),
+            supabaseRest('purchase_requests?status=eq.Approved&select=*&order=created_at.desc').catch(() => [])
+        ]);
+
+        const activeBills = (activeOrders || []).map(mapPoToDashboardBill);
         const vendorNames = (vendors || []).map(v => v.name);
 
         return {
@@ -167,15 +218,18 @@
      * Fetch 2-Way Match & APV Data
      */
     async function getMatchAndAPV() {
-        const [grCompleted, apvList] = await Promise.all([
-            supabaseRest('purchase_orders?status=eq.GR Completed&select=*,items:purchase_order_items(*),receipts:goods_receipts(*)&order=created_at.desc&limit=100'),
+        const [grOrders, apvOrders] = await Promise.all([
+            supabaseRest('purchase_orders?status=eq.GR Completed&select=*,items:purchase_order_items(*),receipts:goods_receipts(*,gr_items:goods_receipt_items(*))&order=created_at.desc&limit=100'),
             supabaseRest('purchase_orders?status=eq.PO Closed - Ready for APV&select=*,items:purchase_order_items(*)&order=created_at.desc&limit=100')
         ]);
 
+        const grCompletedBills = (grOrders || []).map(mapPoToDashboardBill);
+        const apvListBills = (apvOrders || []).map(mapPoToDashboardBill);
+
         return {
             status: 'success',
-            grCompleted: grCompleted || [],
-            apvList: apvList || []
+            grCompleted: grCompletedBills,
+            apvList: apvListBills
         };
     }
 
