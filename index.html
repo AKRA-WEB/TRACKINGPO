@@ -270,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260819.10";
+    const CURRENT_VERSION = "20260820.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -859,7 +859,8 @@
                                 sku: item.sku || '',
                                 product: item.productName || item.product || '',
                                 productName: item.productName || item.product || '',
-                                poQty: Number(item.poQty || 0),
+                                quantity: Number(item.poQty || item.quantity || 0),
+                                poQty: Number(item.poQty || item.quantity || 0),
                                 unit: item.unit || 'ชิ้น',
                                 price: Number(item.price || 0),
                                 amount: Number(item.amount || 0),
