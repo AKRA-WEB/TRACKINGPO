@@ -270,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260820.02";
+    const CURRENT_VERSION = "20260820.03";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -726,7 +726,7 @@
                     poDate: new Date().toISOString().split('T')[0],
                     vendor: payload.vendor,
                     warehouse: payload.warehouse,
-                    remark: 'Direct PO',
+                    remark: '',
                     items: (payload.items || []).map(it => ({
                         sku: it.sku || '',
                         productName: it.product,
@@ -1468,7 +1468,7 @@
                         product: it.product,
                         quantity: it.quantity,
                         unit: it.unit || "",
-                        remark: isDirectBillRefUid(refPrUid) ? "Direct PO (Edited)" : "Ref PR",
+                        remark: "",
                         status: "Pending GR",
                         displayStatus: "Pending GR",
                         grQty: "", locIn: "", exp: "", ata: "", receiverName: "", leadtime: "", oldStock: "",
@@ -1504,7 +1504,7 @@
                         product: it.product,
                         quantity: it.quantity,
                         unit: it.unit || "",
-                        remark: "Direct PO",
+                        remark: "",
                         status: "Pending GR",
                         displayStatus: "Pending GR",
                         grQty: "", locIn: "", exp: "", ata: "", receiverName: "", leadtime: "", oldStock: "",
@@ -1579,7 +1579,7 @@
             const editBlocked = receivingStarted || hasCompletedSibling;
             
             // เช็คว่าบิลนี้มาจากปุ่ม Direct PO หรือเปล่า
-            const isDirectPO = group.items.some(i => i.remark && i.remark.toString().includes('Direct PO'));
+            const isDirectPO = isDirectBillRefUid(group.refPrUid) || group.items.some(i => isDirectBillRefUid(i.refPrUid) || (i.remark && i.remark.toString().includes('Direct PO')));
             let directBadge = isDirectPO ? `<span class="text-[9px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded shadow-sm border border-purple-200 ml-1">⚡ Direct PO</span>` : '';
             const expectedBadge = group.expectedDate ? `<span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-bold whitespace-nowrap flex-shrink-0 border border-emerald-100">ยืนยันส่ง: ${esc(group.expectedDate)}</span>` : '';
 

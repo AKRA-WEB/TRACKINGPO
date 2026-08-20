@@ -169,7 +169,7 @@
             vendor_name: vendor,
             warehouse: warehouse || 'W1',
             status: 'Pending GR',
-            remark: remark || 'Direct PO Web App'
+            remark: remark || ''
         };
 
         const insertedPOs = await supabaseRest('purchase_orders', {
