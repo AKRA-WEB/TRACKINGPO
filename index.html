@@ -8,7 +8,6 @@
   <title>ระบบจัดซื้อ & APV</title>
   
   <link rel="stylesheet" href="styles.css">
-  <script src="js/supabase-po-client.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
@@ -270,7 +269,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260820.04";
+    const CURRENT_VERSION = "20260820.05";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
