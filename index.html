@@ -9,6 +9,7 @@
   
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="js/supabase-po-client.js" defer></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <style>
@@ -269,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260820.05";
+    const CURRENT_VERSION = "20260820.06";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -717,34 +718,43 @@
     async function apiAction(action, payload) {
         if (await AppVersionGuard.blockIfStale(action)) return { success: false, message: "พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ" };
 
-        if (typeof window !== "undefined" && window.AkraSupabasePO && action === "createPO") {
+        if (typeof window !== "undefined" && window.AkraSupabasePO && (action === "createPO" || action === "deletePO")) {
             try {
-                showDataLoading("กำลังบันทึกบิล...");
-                const supaRes = await AkraSupabasePO.saveDirectPO({
-                    poNumber: payload.poNumber || ('PO-' + Date.now().toString().slice(-4)),
-                    poDate: new Date().toISOString().split('T')[0],
-                    vendor: payload.vendor,
-                    warehouse: payload.warehouse,
-                    remark: '',
-                    items: (payload.items || []).map(it => ({
-                        sku: it.sku || '',
-                        productName: it.product,
-                        poQty: Number(it.quantity || 0),
-                        unit: it.unit || 'ชิ้น',
-                        expectedDate: payload.expectedDate || ''
-                    }))
-                });
-                hideDataLoading();
-                showNotification('สร้างบิล Direct PO สำเร็จแล้ว', 'success');
-                return {
-                    success: true,
-                    message: 'สร้างบิลสำเร็จ',
-                    poNumber: supaRes.poNumber,
-                    directBillRefUid: 'DIRECT-' + supaRes.poId,
-                    poUids: [supaRes.poId]
-                };
+                if (action === "createPO") {
+                    showDataLoading("กำลังบันทึกบิล...");
+                    const supaRes = await AkraSupabasePO.saveDirectPO({
+                        poNumber: payload.poNumber || ('PO-DIR-' + Date.now().toString().slice(-6)),
+                        poDate: new Date().toISOString().split('T')[0],
+                        vendor: payload.vendor,
+                        warehouse: payload.warehouse,
+                        remark: '',
+                        items: (payload.items || []).map(it => ({
+                            sku: it.sku || '',
+                            product: it.product || it.productName,
+                            quantity: Number(it.quantity || 0),
+                            unit: it.unit || 'ชิ้น',
+                            expectedDate: payload.expectedDate || ''
+                        }))
+                    }, getSessionToken());
+                    hideDataLoading();
+                    showNotification('สร้างบิล Direct PO สำเร็จแล้ว', 'success');
+                    return {
+                        success: true,
+                        message: 'สร้างบิลสำเร็จ',
+                        poNumber: supaRes.poNumber,
+                        directBillRefUid: supaRes.directBillRefUid,
+                        poUids: supaRes.poUids
+                    };
+                } else if (action === "deletePO") {
+                    showDataLoading("กำลังลบบิล...");
+                    await AkraSupabasePO.deleteBill(payload, getSessionToken());
+                    hideDataLoading();
+                    showNotification('ลบบิลสำเร็จแล้ว', 'success');
+                    removeDeletedBillFromLocalData(payload);
+                    return { success: true, message: 'ลบบิลสำเร็จ' };
+                }
             } catch(supaErr) {
-                console.warn('Supabase Direct PO save error, falling back to GAS:', supaErr);
+                console.warn('Supabase PO action error, falling back to GAS:', supaErr);
             }
         }
 
@@ -842,42 +852,16 @@
         if (typeof window !== "undefined" && window.AkraSupabasePO && (action === 'getInitialData' || action === 'getProducts')) {
             try {
                 if (action === 'getInitialData') {
-                    const supa = await AkraSupabasePO.getInitialData(payload || {});
-                    const flatPending = [];
-                    (supa.activeBills || []).forEach(bill => {
-                        (bill.items || []).forEach((item, itemIdx) => {
-                            flatPending.push({
-                                id: item.id || bill.id,
-                                rowNumber: item.rowNumber || itemIdx + 1,
-                                uid: item.uid || item.id,
-                                poNumber: bill.poNumber,
-                                poDate: bill.poDate,
-                                refPrUid: bill.refPrUid || '',
-                                vendor: bill.vendor,
-                                warehouse: bill.warehouse,
-                                sku: item.sku || '',
-                                product: item.productName || item.product || '',
-                                productName: item.productName || item.product || '',
-                                quantity: Number(item.poQty || item.quantity || 0),
-                                poQty: Number(item.poQty || item.quantity || 0),
-                                unit: item.unit || 'ชิ้น',
-                                price: Number(item.price || 0),
-                                amount: Number(item.amount || 0),
-                                status: item.status || bill.status || 'Pending GR',
-                                displayStatus: item.displayStatus || bill.status || 'Pending GR',
-                                remark: bill.remark || '',
-                                expectedDate: item.expectedDate || bill.expectedDate || '',
-                                grQty: item.grQty || '',
-                                locIn: item.locIn || '',
-                                exp: item.exp || '',
-                                oldStock: item.oldStock || '',
-                                ata: item.ata || bill.ata || '',
-                                receiverName: item.receiverName || bill.receiverName || '',
-                                leadtime: item.leadtime || ''
-                            });
-                        });
-                    });
-                    return { success: true, pendingPOs: flatPending, grCompleted: supa.completedBills || [], vendors: supa.vendors || [], apvList: [], prList: [] };
+                    const supa = await AkraSupabasePO.getInitialData(payload || {}, getSessionToken());
+                    if (supa && supa.success) {
+                        return {
+                            success: true,
+                            pendingPOs: supa.pendingPOs || [],
+                            grCompleted: supa.grCompleted || [],
+                            apvList: supa.apvList || [],
+                            prList: []
+                        };
+                    }
                 } else if (action === 'getProducts') {
                     const prods = await AkraSupabasePO.getProducts();
                     const vendorSet = new Set();
