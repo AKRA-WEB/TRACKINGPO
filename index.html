@@ -717,6 +717,38 @@
 
     async function apiAction(action, payload) {
         if (await AppVersionGuard.blockIfStale(action)) return { success: false, message: "พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ" };
+
+        if (typeof window !== "undefined" && window.AkraSupabasePO && action === "createPO") {
+            try {
+                showDataLoading("กำลังบันทึกบิล...");
+                const supaRes = await AkraSupabasePO.saveDirectPO({
+                    poNumber: payload.poNumber || ('PO-' + Date.now().toString().slice(-4)),
+                    poDate: new Date().toISOString().split('T')[0],
+                    vendor: payload.vendor,
+                    warehouse: payload.warehouse,
+                    remark: 'Direct PO',
+                    items: (payload.items || []).map(it => ({
+                        sku: it.sku || '',
+                        productName: it.product,
+                        poQty: Number(it.quantity || 0),
+                        unit: it.unit || 'ชิ้น',
+                        expectedDate: payload.expectedDate || ''
+                    }))
+                });
+                hideDataLoading();
+                showNotification('สร้างบิล Direct PO สำเร็จแล้ว', 'success');
+                return {
+                    success: true,
+                    message: 'สร้างบิลสำเร็จ',
+                    poNumber: supaRes.poNumber,
+                    directBillRefUid: 'DIRECT-' + supaRes.poId,
+                    poUids: [supaRes.poId]
+                };
+            } catch(supaErr) {
+                console.warn('Supabase Direct PO save error, falling back to GAS:', supaErr);
+            }
+        }
+
         showDataLoading("กำลังประมวลผล...");
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), PO_MUTATION_TIMEOUT_MS);
@@ -1086,42 +1118,77 @@
     }
 
     function setupProductAutocompleteForPO(inputEl) {
-        const suggestionBox = inputEl.nextElementSibling.nextElementSibling;
+        const suggestionBox = (inputEl.parentElement && inputEl.parentElement.querySelector('.suggestion-box')) || inputEl.nextElementSibling.nextElementSibling;
+        if (!suggestionBox) return;
         let debounceTimer = null;
+
+        async function doSearch(val) {
+            suggestionBox.innerHTML = "";
+            let filtered = [];
+
+            // 1. Search in-memory products
+            if (appData.products && appData.products.length > 0) {
+                filtered = appData.products.filter(p => (p.name && p.name.toLowerCase().includes(val)) || (p.sku && p.sku.toLowerCase().includes(val))).slice(0, 15);
+            }
+
+            // 2. If nothing found in memory or empty catalog, query Supabase live
+            if (filtered.length === 0 && typeof window !== "undefined" && window.AkraSupabasePO) {
+                try {
+                    filtered = await AkraSupabasePO.searchProducts(val, 15);
+                } catch(e) {
+                    console.warn('Live search error:', e);
+                }
+            }
+
+            if (!filtered || filtered.length === 0) {
+                suggestionBox.classList.add("hidden");
+                return;
+            }
+
+            filtered.forEach(p => {
+                const li = document.createElement("li");
+                li.className = "px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center";
+                const vendorLabel = p.vendor || p.default_vendor || "";
+                li.innerHTML = `<span>${esc(p.name || p.product_name)}</span> <span class="text-[10px] text-gray-400 truncate max-w-[120px]">${esc(vendorLabel)}</span>`;
+                li.onmousedown = function(e) {
+                    e.preventDefault();
+                    inputEl.value = p.name || p.product_name;
+                    const row = inputEl.closest(".create-po-item-row");
+                    if (row) {
+                        const skuEl = row.querySelector(".c-sku");
+                        if (skuEl) skuEl.value = p.sku || "";
+                        const unitEl = row.querySelector(".c-unit");
+                        if (unitEl) unitEl.value = p.unit || "";
+                        const qtyEl = row.querySelector(".c-qty");
+                        if (qtyEl) qtyEl.focus();
+                    }
+                    if (vendorLabel) {
+                        const vendorInput = document.getElementById("create-po-vendor");
+                        if (vendorInput) vendorInput.value = vendorLabel;
+                    }
+                    suggestionBox.classList.add("hidden");
+                };
+                suggestionBox.appendChild(li);
+            });
+            suggestionBox.classList.remove("hidden");
+        }
+
         inputEl.addEventListener("input", function() {
             clearTimeout(debounceTimer);
             const val = this.value.trim().toLowerCase();
-            if (!val || !appData.products || appData.products.length === 0) {
+            if (!val) {
                 suggestionBox.innerHTML = "";
                 suggestionBox.classList.add("hidden");
                 return;
             }
-            debounceTimer = setTimeout(() => {
-                suggestionBox.innerHTML = "";
-                const filtered = appData.products.filter(p => p.name && p.name.toLowerCase().includes(val)).slice(0, 15);
-                if (filtered.length === 0) { suggestionBox.classList.add("hidden"); return; }
-                
-                filtered.forEach(p => {
-                    const li = document.createElement("li");
-                    li.className = "px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center";
-                    li.innerHTML = `<span>${esc(p.name)}</span> <span class="text-[10px] text-gray-400 truncate max-w-[120px]">${esc(p.vendor || "")}</span>`;
-                    li.onmousedown = function(e) {
-                        e.preventDefault();
-                        inputEl.value = p.name;
-                        const row = inputEl.closest(".create-po-item-row");
-                        row.querySelector(".c-sku").value = p.sku || "";
-                        row.querySelector(".c-unit").value = p.unit || "";
-                        if (p.vendor) { document.getElementById("create-po-vendor").value = p.vendor; }
-                        row.querySelector(".c-qty").focus();
-                        suggestionBox.classList.add("hidden");
-                    };
-                    suggestionBox.appendChild(li);
-                });
-                suggestionBox.classList.remove("hidden");
-            }, 100);
+            debounceTimer = setTimeout(() => doSearch(val), 80);
         });
+
         inputEl.addEventListener("blur", () => setTimeout(() => suggestionBox.classList.add("hidden"), 200));
-        inputEl.addEventListener("focus", function() { if (this.value && suggestionBox.children.length > 0) suggestionBox.classList.remove("hidden"); });
+        inputEl.addEventListener("focus", function() {
+            const val = this.value.trim().toLowerCase();
+            if (val) doSearch(val);
+        });
     }
 
     // =========================================================================

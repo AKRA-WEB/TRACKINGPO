@@ -43,10 +43,14 @@
     /**
      * Instant Autocomplete Search on Products Table via GIN Index (<25ms)
      */
-    async function searchProducts(query, limit = 20) {
-        if (!query || String(query).trim().length === 0) return [];
-        const clean = String(query).trim();
-        const filter = `or=(sku.ilike.*${encodeURIComponent(clean)}*,name.ilike.*${encodeURIComponent(clean)}*)&limit=${limit}&order=name.asc`;
+    async function searchProducts(query = '', limit = 50) {
+        const clean = String(query || '').trim();
+        let filter = `order=name.asc&limit=${limit}`;
+        if (clean) {
+            filter = `or=(sku.ilike.*${encodeURIComponent(clean)}*,name.ilike.*${encodeURIComponent(clean)}*)&${filter}`;
+        } else {
+            filter = `order=name.asc&limit=2000`;
+        }
         const items = await supabaseRest(`products?${filter}`);
         return (items || []).map(p => ({
             sku: p.sku,
@@ -54,7 +58,8 @@
             name: p.name,
             unit: p.unit,
             category: p.category,
-            default_vendor: p.default_vendor
+            vendor: p.default_vendor || '',
+            default_vendor: p.default_vendor || ''
         }));
     }
 
