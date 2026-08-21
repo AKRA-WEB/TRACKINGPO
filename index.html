@@ -270,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260821.02";
+    const CURRENT_VERSION = "20260821.03";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -330,7 +330,7 @@
         function showModal() {
             injectStyles();
             var existing = document.getElementById('avg-modal');
-            if (existing) { existing.querySelector('button').focus(); return; }
+            if (existing) { var b = existing.querySelector('button'); if (b && b.focus) b.focus(); return; }
             var m = document.createElement('div');
             m.id = 'avg-modal';
             m.setAttribute('role', 'alertdialog');
@@ -449,14 +449,58 @@
         return !!(data && data.valid && data.user && data.user.mustChangePassword !== true);
     }
 
+    function normalizeRole(role) {
+        return String(role || '').trim().toUpperCase();
+    }
+
+    function normalizeRoles(roles) {
+        if (Array.isArray(roles)) return roles.map(normalizeRole).filter(Boolean);
+        if (roles === null || roles === undefined) return [];
+        return String(roles).split(',').map(normalizeRole).filter(Boolean);
+    }
+
+    function getPoPerms(session) {
+        if (!session || !session.perms || typeof session.perms !== 'object') return null;
+        if (Object.prototype.hasOwnProperty.call(session.perms, 'app-po')) {
+            return (session.perms['app-po'] || []).map(String);
+        }
+        if (Object.prototype.hasOwnProperty.call(session.perms, 'app-tracking')) {
+            return (session.perms['app-tracking'] || []).map(String);
+        }
+        return null;
+    }
+
+    function hasPoAccess(session) {
+        const perms = getPoPerms(session);
+        if (perms && perms.length > 0) return true;
+        const roles = normalizeRoles(session && session.roles);
+        return roles.includes('ADMIN') || roles.includes('PURCHASER') || roles.includes('SUPERVISOR') || roles.includes('MANAGER');
+    }
 
     function decodeJwtPayload(token) {
         try {
             if (!token || typeof token !== 'string') return null;
             const parts = token.split('.');
             if (parts.length !== 3) return null;
-            const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-            const json = decodeURIComponent(escape(atob(payloadBase64)));
+            let payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            while (payloadBase64.length % 4) {
+                payloadBase64 += '=';
+            }
+            let json;
+            if (typeof TextDecoder !== 'undefined' && typeof atob === 'function') {
+                const binaryStr = atob(payloadBase64);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i);
+                }
+                json = new TextDecoder('utf-8').decode(bytes);
+            } else if (typeof atob === 'function') {
+                json = decodeURIComponent(atob(payloadBase64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            } else {
+                return null;
+            }
             const parsed = JSON.parse(json);
             if (parsed && parsed.exp && parsed.exp * 1000 < Date.now()) return null;
             return parsed;
@@ -468,7 +512,6 @@
             const isVersionOk = await checkAppVersion();
             if (!isVersionOk) return;
             AppVersionGuard.start({ current: CURRENT_VERSION, readActions: ['getInitialData', 'getProducts', 'getVendorDeliveryInsights'] });
-            initialDataPrefetch = readApiCall('getInitialData', { includeProducts: false, includeCompleted: false });
 
             lucide.createIcons();
             UI.showLoading();
@@ -483,7 +526,7 @@
 
                 if (ssoToken) {
                     tokenToVerify = ssoToken;
-                    window.history.replaceState({}, document.title, window.location.pathname);
+                    try { window.history.replaceState({}, document.title, window.location.pathname); } catch(e) {}
                 } else if (savedToken) {
                     tokenToVerify = savedToken;
                 }
@@ -491,6 +534,12 @@
                 if (!tokenToVerify && isPreviewEnv) {
                     console.log("เข้าสู่โหมดทดสอบ (Preview Mode)");
                     window.currentUser = "โหมดทดสอบ (Preview)";
+                    window.appSession = {
+                        id: "preview-user",
+                        name: window.currentUser,
+                        roles: ["ADMIN", "PURCHASER", "SUPERVISOR"],
+                        perms: { "app-po": ["createPO", "approvePR", "closePO"], "app-tracking": ["createPO", "approvePR", "closePO"] }
+                    };
                     UI.showApp(window.currentUser);
                     AuthGuard.bindEvents();
                     await loadInitialData();
@@ -502,20 +551,32 @@
                     return;
                 }
 
+                // Store token in localStorage immediately so getSessionToken() finds it for prefetch
+                try { localStorage.setItem(APP_CONFIG.STORAGE_KEY, tokenToVerify); } catch(e) {}
+
+                // Start active initial data prefetch immediately with valid token!
+                initialDataPrefetch = readApiCall('getInitialData', { includeProducts: false, includeCompleted: false });
+
+                // 1. Instant JWT SSO (<1ms) - Render UI & cached data immediately
                 const jwtUser = decodeJwtPayload(tokenToVerify);
-                if (jwtUser) {
-                    const roles = jwtUser.roles || [];
-                    const hasAccess = roles.includes('ADMIN') || roles.includes('PURCHASER') || roles.includes('SUPERVISOR') || roles.includes('MANAGER');
-                    if (hasAccess) {
-                        localStorage.setItem(APP_CONFIG.STORAGE_KEY, tokenToVerify);
-                        window.appSession = { id: jwtUser.id, name: jwtUser.name || jwtUser.id, roles: roles, perms: jwtUser.perms || {} };
-                        window.currentUser = jwtUser.name || jwtUser.id;
-                        UI.showApp(window.currentUser);
+                if (jwtUser && jwtUser.mustChangePassword !== true) {
+                    const session = {
+                        id: jwtUser.id,
+                        name: jwtUser.name || jwtUser.id,
+                        roles: normalizeRoles(jwtUser.roles),
+                        perms: jwtUser.perms || {}
+                    };
+                    if (hasPoAccess(session)) {
+                        window.appSession = session;
+                        window.currentUser = session.name;
+                        UI.showApp(session.name);
                         AuthGuard.bindEvents();
                         await loadInitialData();
                         return;
                     }
                 }
+
+                // 2. Fallback: Edge or GAS token verification
                 const verifyUrl = `${APP_CONFIG.API_URL}?action=verifyToken&token=${encodeURIComponent(tokenToVerify)}&appId=${encodeURIComponent(APP_CONFIG.APP_ID)}`;
 
                 const response = await fetch(verifyUrl);
@@ -524,8 +585,14 @@
                 const data = await response.json();
 
                 if (isVerifiedAppSession(data)) {
-                    localStorage.setItem(APP_CONFIG.STORAGE_KEY, tokenToVerify);
-                    window.appSession = data.user;
+                    const session = {
+                        id: data.user.id,
+                        name: data.user.name,
+                        roles: normalizeRoles(data.user.roles),
+                        perms: data.user.perms || {}
+                    };
+                    try { localStorage.setItem(APP_CONFIG.STORAGE_KEY, tokenToVerify); } catch(e) {}
+                    window.appSession = session;
                     window.currentUser = data.user.name;
 
                     UI.showApp(data.user.name);
@@ -550,6 +617,12 @@
                 const isPreviewEnv = window.self !== window.top || window.location.hostname === "";
                 if (isPreviewEnv) {
                     window.currentUser = "โหมดทดสอบ (API Error)";
+                    window.appSession = {
+                        id: "preview-user",
+                        name: window.currentUser,
+                        roles: ["ADMIN", "PURCHASER", "SUPERVISOR"],
+                        perms: { "app-po": ["createPO", "approvePR", "closePO"], "app-tracking": ["createPO", "approvePR", "closePO"] }
+                    };
                     UI.showApp(window.currentUser);
                     AuthGuard.bindEvents();
                     await loadInitialData();
@@ -615,10 +688,13 @@
 
     function can(perm) {
         if (!window.appSession) return false;
-        var perms = (window.appSession.perms && window.appSession.perms["app-po"]) || [];
-        if (perms.length > 0) return perms.includes(perm);
-        var roles = window.appSession.roles || [];
-        return roles.includes("ADMIN") || roles.includes("SUPERVISOR");
+        var perms = getPoPerms(window.appSession);
+        if (perms !== null) {
+            return perms.includes(perm);
+        }
+        // Backward compat: token without perms contract field
+        var roles = normalizeRoles(window.appSession.roles);
+        return roles.includes("ADMIN") || roles.includes("SUPERVISOR") || roles.includes("PURCHASER") || roles.includes("MANAGER");
     }
 
     // --- Custom UI Tools ---
@@ -1001,7 +1077,6 @@
                 poMatchLoaded = false;
                 poApvLoaded = false;
                 processDataAndRender();
-                showNotification('กำลังอัปเดตข้อมูลล่าสุด...', 'warning');
             } catch (e) { showDataLoading('กำลังโหลดข้อมูล...'); }
         } else {
             showDataLoading('กำลังโหลดข้อมูล...');

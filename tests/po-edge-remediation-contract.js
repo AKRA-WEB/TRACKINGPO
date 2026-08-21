@@ -215,11 +215,14 @@ function createMockEnvironment() {
     clearTimeout: clearTimeout,
     setInterval: setInterval,
     clearInterval: clearInterval,
-    fetch: async () => ({
-      ok: true,
-      json: async () => ({ version: '20260821.02' }),
-      text: async () => JSON.stringify({ version: '20260821.02' })
-    }),
+    fetch: async (url) => {
+      const currentVer = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'version.json'), 'utf8')).version;
+      return {
+        ok: true,
+        json: async () => ({ version: currentVer }),
+        text: async () => JSON.stringify({ version: currentVer })
+      };
+    },
     AkraSupabasePO: {
       createPO: async (payload, token) => {
         dispatchedActions.push({ action: 'createPO', payload, token });
