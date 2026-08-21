@@ -74,10 +74,11 @@
         closePO: (payload, token) => request('closePO', payload, token),
         searchProducts: async (query, limit = 30, token) => {
             const res = await request('getProducts', {}, token);
-            if (!res || !res.products) return [];
+            const prods = (res && res.data && res.data.products) || (res && res.products) || [];
+            if (!prods.length) return [];
             const q = (query || '').toLowerCase().trim();
-            if (!q) return res.products.slice(0, limit);
-            return res.products
+            if (!q) return prods.slice(0, limit);
+            return prods
                 .filter(p => (p.name && p.name.toLowerCase().includes(q)) || (p.sku && p.sku.toLowerCase().includes(q)))
                 .slice(0, limit);
         },

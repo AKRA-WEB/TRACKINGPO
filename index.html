@@ -6,22 +6,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://script.google.com">
   <title>ระบบจัดซื้อ & APV</title>
-  
+
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="js/supabase-po-client.js" defer></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  
+
   <style>
     body { font-family: 'Prompt', sans-serif; background-color: #f8fafc; }
     .glass-card { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid #f1f5f9; }
     .input-field { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; outline: none; transition: border-color 0.2s; font-size: 14px; background: #fff; }
     .input-field:focus { border-color: #171C8F; box-shadow: 0 0 0 2px rgba(23, 28, 143, 0.1); }
-    
+
     .tab-btn { padding: 14px 20px; font-weight: 600; color: #64748b; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; font-size: 15px;}
     .tab-btn:hover { color: #171C8F; background: #f8fafc; }
     .tab-btn.active { color: #171C8F; border-bottom-color: #171C8F; background: white;}
-    
+
     .btn-create { background: #171C8F; color: white; border-radius: 8px; padding: 12px 24px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;}
     .btn-create:hover:not(:disabled) { background: #11146B; }
     .btn-create:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -36,7 +36,7 @@
     .toast.closing { animation: slideOutRight 0.3s cubic-bezier(0.4,0,0.2,1) forwards; }
     @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     @keyframes slideOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
-    
+
     .loading-active { overflow: hidden; }
   </style>
 </head>
@@ -82,7 +82,7 @@
       </nav>
 
       <main class="flex-1 overflow-y-auto w-full max-w-7xl mx-auto bg-[#f8fafc]">
-        
+
         <div class="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
             <div class="flex overflow-x-auto hide-scroll px-4 sm:px-6">
                 <button onclick="switchTab('tab-pr')" id="btn-tab-pr" class="tab-btn active">
@@ -101,7 +101,7 @@
         </div>
 
         <div class="p-4 sm:p-6">
-            
+
             <!-- TAB 1: PR -->
             <section id="tab-pr" class="block">
                 <div class="mb-5 flex justify-between items-end">
@@ -152,7 +152,7 @@
                     <h2 class="text-lg font-bold text-brand-blue">บิลรอดำเนินการ</h2>
                     <span class="text-xs bg-brand-blueLight text-brand-blue px-3 py-1 rounded-full font-bold" id="po-count">0 บิล</span>
                 </div>
-                
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -206,7 +206,7 @@
               </div>
               <button onclick="closeCreatePoModal()" class="text-gray-400 hover:text-red-500 font-bold text-xl border-none bg-transparent">✕</button>
           </div>
-          
+
           <form id="form-create-po" onsubmit="submitDirectPO(event)" novalidate>
               <input type="hidden" id="c-ref-pr-row" value="">
 
@@ -231,7 +231,7 @@
                       <p id="create-po-expected-date-help" class="text-[11px] text-gray-500 mt-1">ไม่บังคับ ถ้ามีวันที่นี้ ระบบจะใช้แทนค่าประมาณ</p>
                   </div>
               </div>
-              
+
               <div class="bg-white rounded-xl border border-gray-200 mb-6 pb-2">
                   <h4 class="text-sm font-bold text-gray-800 p-4 border-b border-gray-100 bg-gray-50/50 rounded-t-xl">รายการสินค้า</h4>
                   <div class="p-3 sm:p-4">
@@ -241,7 +241,7 @@
                       </button>
                   </div>
               </div>
-              
+
               <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                   <button type="button" onclick="closeCreatePoModal()" class="btn-outline-action px-6 py-2.5 text-sm bg-white hover:bg-gray-50 text-gray-600 font-bold border border-gray-200 rounded-lg">ยกเลิก</button>
                   <button type="submit" id="btn-submit-direct-po" class="btn-create py-2.5 px-8 text-sm font-bold shadow-md bg-brand-blue text-white rounded-lg">บันทึกสั่งซื้อ (Create PO)</button>
@@ -270,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260820.07";
+    const CURRENT_VERSION = "20260821.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -407,7 +407,7 @@
     };
 
     var DATA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx9AFlNt3s-RVMlgVpC3qqp9kR9aKJbX2XKC_xnLs2ZO666dedQM7pMbs6vtSaOPiw/exec";
-    
+
     var appData = { prList: [], pendingPOs: [], grCompleted: [], apvList: [], vendors: [], products: [] };
     var poMatchLoaded = false;
     var poApvLoaded = false;
@@ -449,7 +449,7 @@
         return !!(data && data.valid && data.user && data.user.mustChangePassword !== true);
     }
 
-    
+
     function decodeJwtPayload(token) {
         try {
             if (!token || typeof token !== 'string') return null;
@@ -475,9 +475,9 @@
 
             try {
                 const urlParams = new URLSearchParams(window.location.search);
-                const ssoToken = urlParams.get('sso'); 
+                const ssoToken = urlParams.get('sso');
                 let savedToken = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
-                
+
                 let tokenToVerify = null;
                 const isPreviewEnv = window.self !== window.top || window.location.hostname === "" || window.location.hostname === "localhost" || window.location.hostname.includes("googleusercontent");
 
@@ -494,7 +494,7 @@
                     UI.showApp(window.currentUser);
                     AuthGuard.bindEvents();
                     await loadInitialData();
-                    return; 
+                    return;
                 }
 
                 if (!tokenToVerify) {
@@ -520,7 +520,7 @@
 
                 const response = await fetch(verifyUrl);
                 if (!response.ok) throw new Error("API_ERROR");
-                
+
                 const data = await response.json();
 
                 if (isVerifiedAppSession(data)) {
@@ -540,7 +540,7 @@
                     } else if (data.reason === 'invalid_or_expired_token') {
                         errorMsg = "ข้อมูลการเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบใหม่ผ่าน Portal";
                     }
-                    
+
                     UI.showError(errorMsg);
                     localStorage.removeItem(APP_CONFIG.STORAGE_KEY);
                 }
@@ -591,6 +591,8 @@
     }
 
     function poBillGroupKey(po, legacySuffix = '') {
+        const poId = String((po && (po.poId || po.po_id)) || '').trim();
+        if (poId) return 'poid:' + poId + legacySuffix;
         const ref = usableBillRefUid(po && po.refPrUid);
         if (ref) return 'bill:' + ref + legacySuffix;
         return 'legacy:' + [po.poNumber || '', po.vendor || '', po.poDate || '', po.warehouse || ''].join('|') + legacySuffix;
@@ -634,7 +636,7 @@
         if(!c) return;
         const t = document.createElement('div');
         t.className = `toast ${type}`;
-        
+
         let icon = '';
         if(type === 'success') icon = `<i data-lucide="check-circle" class="w-6 h-6 text-emerald-500 flex-shrink-0"></i>`;
         else if(type === 'warning') icon = `<i data-lucide="alert-triangle" class="w-6 h-6 text-yellow-500 flex-shrink-0"></i>`;
@@ -645,7 +647,7 @@
         lucide.createIcons();
         setTimeout(() => { t.classList.add('closing'); t.addEventListener('animationend', () => t.remove()); }, 4000);
     }
-    
+
     function showConfirmModal(message, callback) {
         document.getElementById('confirm-message').innerText = message;
         confirmCallback = callback;
@@ -701,11 +703,13 @@
 
     function removeDeletedBillFromLocalData(payload) {
         const requestedUids = new Set(normalizeDeletePoUids(payload.poUids));
-        const requestedRefPrUid = normalizeDeleteBillRef(payload.refPrUid);
+        const requestedPoId = String(payload.poId || '').trim();
         const legacyBill = payload.legacyBill === true;
-        const keepItem = item => legacyBill
-            ? !requestedUids.has(String(item.uid || '').trim())
-            : normalizeDeleteBillRef(item.refPrUid) !== requestedRefPrUid;
+        const keepItem = item => {
+            const itemUid = String(item.uid || '').trim();
+            if (legacyBill || !requestedPoId) return !requestedUids.has(itemUid);
+            return String(item.poId || item.po_id || '').trim() !== requestedPoId;
+        };
         ['pendingPOs', 'grCompleted', 'apvList'].forEach(key => {
             appData[key] = (appData[key] || []).filter(keepItem);
         });
@@ -803,11 +807,15 @@
                 return result;
             } else if (action === "closePO") {
                 result = await AkraSupabasePO.closePO({
+                    poId: payload.poId || (payload.items && payload.items[0]?.poId) || '',
                     refPrUid: payload.refPrUid || (payload.items && payload.items[0]?.refPrUid) || '',
-                    items: payload.items
+                    expectedItemCount: payload.expectedItemCount || (payload.items ? payload.items.length : 0),
+                    items: payload.items,
+                    extraItems: payload.extraItems || []
                 }, token);
                 const rowsToRemove = (payload.items || []).map(i => i.rowNumber || i.uid);
                 appData.grCompleted = (appData.grCompleted || []).filter(po => !rowsToRemove.includes(po.rowNumber) && !rowsToRemove.includes(po.uid));
+                poApvLoaded = false;
                 processDataAndRender();
                 hideDataLoading();
                 showNotification(result.message || 'ส่งฝ่าย APV สำเร็จ', 'success');
@@ -849,17 +857,19 @@
         try {
             if (action === 'getInitialData') {
                 const supa = await AkraSupabasePO.getInitialData(payload || {}, token);
+                const data = (supa && supa.data) || supa || {};
                 return {
                     success: true,
-                    pendingPOs: supa.pendingPOs || [],
-                    grCompleted: supa.grCompleted || [],
-                    prList: supa.prList || [],
-                    apvList: supa.apvList || [],
-                    vendors: supa.vendors || []
+                    pendingPOs: data.pendingPOs || [],
+                    grCompleted: data.grCompleted || [],
+                    prList: data.prList || [],
+                    apvList: data.apvList || [],
+                    vendors: data.vendors || []
                 };
             } else if (action === 'getProducts') {
                 const res = await AkraSupabasePO.getProducts(payload || {}, token);
-                const prods = res.products || [];
+                const data = (res && res.data) || res || {};
+                const prods = data.products || [];
                 const vendorSet = new Set();
                 (prods || []).forEach(p => {
                     const v = p.vendor || p.default_vendor;
@@ -1022,8 +1032,10 @@
     }
 
     function processDataAndRender() {
-        document.getElementById('badge-pr').innerText = appData.prList.length;
-        document.getElementById('badge-po').innerText = appData.pendingPOs.length;
+        const badgePr = document.getElementById('badge-pr');
+        const badgePo = document.getElementById('badge-po');
+        if (badgePr) badgePr.innerText = (appData.prList || []).length;
+        if (badgePo) badgePo.innerText = (appData.pendingPOs || []).length;
 
         groupPOData();
         renderTab1_PR();
@@ -1089,8 +1101,82 @@
         isVendorEventsAttached = true;
     }
 
+    // =========================================================================
+    // TAB 1: PR
+    // =========================================================================
+    function renderTab1_PR() {
+        const container = document.getElementById('pr-container');
+        container.innerHTML = '';
+        if(!appData.prList || appData.prList.length === 0) {
+            container.innerHTML = '<p class="col-span-full text-gray-500 text-center py-10 bg-white rounded-xl border border-dashed">ไม่มีคำขอซื้อใหม่</p>';
+            return;
+        }
+
+        const groupedPRs = {};
+        appData.prList.forEach(pr => {
+            const prodObj = appData.products.find(p => p.name === pr.product);
+            const vendorName = (prodObj && prodObj.vendor) ? prodObj.vendor : 'ไม่ระบุผู้จำหน่าย';
+
+            if(!groupedPRs[vendorName]) {
+                groupedPRs[vendorName] = [];
+            }
+            groupedPRs[vendorName].push(pr);
+        });
+
+        let htmlStr = '';
+        Object.keys(groupedPRs).forEach(vendor => {
+            const prs = groupedPRs[vendor];
+            htmlStr += `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+                <div class="bg-brand-blueLight/40 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-brand-blue text-white p-1.5 rounded-lg shadow-sm">
+                            <i data-lucide="building-2" class="w-4 h-4"></i>
+                        </div>
+                        <h3 class="font-bold text-brand-blue text-lg">${esc(vendor)}</h3>
+                    </div>
+                    <span class="text-xs font-bold text-brand-blue bg-white border border-brand-blue/20 px-2.5 py-1 rounded-full shadow-sm">${prs.length} รายการ</span>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-gray-50/30">
+            `;
+
+            prs.forEach(pr => {
+            htmlStr += `
+            <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm flex flex-col relative hover:border-brand-blue/30 transition hover:shadow-md">
+                <div class="flex justify-between items-start mb-3">
+                    <span class="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">${esc(pr.prNumber || 'PR')}</span>
+                    ${getWarehouseBadge(pr.warehouse)}
+                </div>
+                <p class="font-bold text-gray-800 text-base leading-tight mb-2">${esc(pr.product)}</p>
+                <p class="text-brand-orange font-semibold text-sm mb-3">จำนวนขอ: <span class="text-lg">${esc(pr.quantity)}</span> <span class="text-xs">${esc(pr.unit || '')}</span></p>
+
+                <div class="bg-gray-50 p-3 rounded-lg text-[11px] text-gray-600 mb-4 border border-gray-100 flex-1">
+                    <p><span class="font-medium text-gray-700">ผู้ขอ:</span> ${esc(pr.receiverName || 'พนักงาน')}</p>
+                    <p class="mt-1"><span class="font-medium text-gray-700">เหตุผล:</span> ${esc(pr.remark || '-')}</p>
+                </div>
+
+                <div class="flex gap-1.5 mt-auto">
+                    <button onclick="rejectPR(${pr.rowNumber}, '${pr.uid}', '${pr.prId || pr.prNumber}')" class="btn-outline-action btn-delete flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-red-200">ไม่อนุมัติ</button>
+                    <button onclick="closePRAsDirectPO(${pr.rowNumber}, '${pr.uid}', '${pr.prId || pr.prNumber}')" class="btn-outline-action bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 flex-1 justify-center py-1.5 text-[11px] font-bold px-1">⚡ ซื้อให้แล้ว</button>
+                    ${can('approvePR') ? `<button onclick="approvePRToPOForm(${pr.rowNumber}, '${pr.uid}', '${pr.prId || pr.prNumber}')" class="btn-outline-action btn-success flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-emerald-300">✅ เปิดบิล</button>` : ''}
+                </div>
+
+            </div>
+            `;
+            });
+            htmlStr += `
+                </div>
+            </div>
+            `;
+        });
+
+        container.innerHTML = htmlStr;
+        lucide.createIcons({ root: container });
+    }
+
     function setupProductAutocompleteForPO(inputEl) {
-        const suggestionBox = (inputEl.parentElement && inputEl.parentElement.querySelector('.suggestion-box')) || inputEl.nextElementSibling.nextElementSibling;
+        if (!inputEl) return;
+        const suggestionBox = (inputEl.parentElement && inputEl.parentElement.querySelector('.suggestion-box')) || inputEl.nextElementSibling?.nextElementSibling || null;
         if (!suggestionBox) return;
         let debounceTimer = null;
 
@@ -1116,7 +1202,7 @@
             // 2. If nothing found or catalog not yet fully loaded, query Supabase live
             if (filtered.length === 0 && typeof window !== "undefined" && window.AkraSupabasePO) {
                 try {
-                    filtered = await AkraSupabasePO.searchProducts(val, 30);
+                    filtered = await AkraSupabasePO.searchProducts(val, 30, getSessionToken());
                 } catch(e) {
                     console.warn('Live search error:', e);
                 }
@@ -1173,96 +1259,23 @@
         });
     }
 
-    // =========================================================================
-    // TAB 1: PR 
-    // =========================================================================
-    function renderTab1_PR() {
-        const container = document.getElementById('pr-container');
-        container.innerHTML = '';
-        if(!appData.prList || appData.prList.length === 0) { 
-            container.innerHTML = '<p class="col-span-full text-gray-500 text-center py-10 bg-white rounded-xl border border-dashed">ไม่มีคำขอซื้อใหม่</p>'; 
-            return; 
-        }
-
-        const groupedPRs = {};
-        appData.prList.forEach(pr => {
-            const prodObj = appData.products.find(p => p.name === pr.product);
-            const vendorName = (prodObj && prodObj.vendor) ? prodObj.vendor : 'ไม่ระบุผู้จำหน่าย';
-            
-            if(!groupedPRs[vendorName]) {
-                groupedPRs[vendorName] = [];
-            }
-            groupedPRs[vendorName].push(pr);
-        });
-
-        let htmlStr = '';
-        Object.keys(groupedPRs).forEach(vendor => {
-            const prs = groupedPRs[vendor];
-            htmlStr += `
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-                <div class="bg-brand-blueLight/40 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
-                    <div class="flex items-center gap-2">
-                        <div class="bg-brand-blue text-white p-1.5 rounded-lg shadow-sm">
-                            <i data-lucide="building-2" class="w-4 h-4"></i>
-                        </div>
-                        <h3 class="font-bold text-brand-blue text-lg">${esc(vendor)}</h3>
-                    </div>
-                    <span class="text-xs font-bold text-brand-blue bg-white border border-brand-blue/20 px-2.5 py-1 rounded-full shadow-sm">${prs.length} รายการ</span>
-                </div>
-                <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-gray-50/30">
-            `;
-            
-            prs.forEach(pr => {
-            htmlStr += `
-            <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm flex flex-col relative hover:border-brand-blue/30 transition hover:shadow-md">
-                <div class="flex justify-between items-start mb-3">
-                    <span class="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">${esc(pr.prNumber || 'PR')}</span>
-                    ${getWarehouseBadge(pr.warehouse)}
-                </div>
-                <p class="font-bold text-gray-800 text-base leading-tight mb-2">${esc(pr.product)}</p>
-                <p class="text-brand-orange font-semibold text-sm mb-3">จำนวนขอ: <span class="text-lg">${esc(pr.quantity)}</span> <span class="text-xs">${esc(pr.unit || '')}</span></p>
-
-                <div class="bg-gray-50 p-3 rounded-lg text-[11px] text-gray-600 mb-4 border border-gray-100 flex-1">
-                    <p><span class="font-medium text-gray-700">ผู้ขอ:</span> ${esc(pr.receiverName || 'พนักงาน')}</p>
-                    <p class="mt-1"><span class="font-medium text-gray-700">เหตุผล:</span> ${esc(pr.remark || '-')}</p>
-                </div>
-
-                <div class="flex gap-1.5 mt-auto">
-                    <button onclick="rejectPR(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-delete flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-red-200">ไม่อนุมัติ</button>
-                    <button onclick="closePRAsDirectPO(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 flex-1 justify-center py-1.5 text-[11px] font-bold px-1">⚡ ซื้อให้แล้ว</button>
-                    ${can('approvePR') ? `<button onclick="approvePRToPOForm(${pr.rowNumber}, '${pr.uid}')" class="btn-outline-action btn-success flex-1 justify-center py-1.5 text-[11px] font-bold px-1 border-emerald-300">✅ เปิดบิล</button>` : ''}
-                </div>
-
-            </div>
-            `;
-            });
-            htmlStr += `
-                </div>
-            </div>
-            `;
-        });
-        
-        container.innerHTML = htmlStr;
-        lucide.createIcons({ root: container });
-    }
-
-    function rejectPR(rowNumber, prUid) {
+    function rejectPR(rowNumber, prUid, prId) {
         if (!can('approvePR')) { showNotification('ไม่มีสิทธิ์จัดการคำขอซื้อ', 'error'); return; }
         showConfirmModal("คุณต้องการไม่อนุมัติคำขอนี้ใช่หรือไม่?", () => {
             const remark = prompt("ระบุเหตุผลที่ไม่อนุมัติคำขอนี้ (ถ้ามี):") || "ไม่อนุมัติ";
-            apiAction('rejectPR', { rowNumber: rowNumber, prUid: prUid, remark: `[ไม่อนุมัติ]: ${remark}` });
+            apiAction('rejectPR', { rowNumber: rowNumber, prUid: prUid, prId: prId, remark: `[ไม่อนุมัติ]: ${remark}` });
         });
     }
 
-    function closePRAsDirectPO(rowNumber, prUid) {
+    function closePRAsDirectPO(rowNumber, prUid, prId) {
         if (!can('approvePR')) { showNotification('ไม่มีสิทธิ์จัดการคำขอซื้อ', 'error'); return; }
         showConfirmModal("ต้องการปิดคำขอนี้ เนื่องจาก 'จัดซื้อได้เปิดบิลสั่งซื้อให้เรียบร้อยแล้ว (Direct PO)' ใช่หรือไม่?", () => {
-            apiAction('rejectPR', { rowNumber: rowNumber, prUid: prUid, remark: `จัดซื้อดำเนินการสั่งซื้อให้เรียบร้อยแล้ว (Direct PO)`, status: 'ซื้อให้แล้ว' });
+            apiAction('rejectPR', { rowNumber: rowNumber, prUid: prUid, prId: prId, remark: `จัดซื้อดำเนินการสั่งซื้อให้เรียบร้อยแล้ว (Direct PO)`, status: 'ซื้อให้แล้ว' });
         });
     }
 
-    function approvePRToPOForm(rowNumber, prUid) {
-        const pr = appData.prList.find(p => p.uid === prUid || p.rowNumber === rowNumber);
+    function approvePRToPOForm(rowNumber, prUid, prId) {
+        const pr = appData.prList.find(p => (prId && p.prId === prId) || p.uid === prUid || p.rowNumber === rowNumber);
         if(!pr) return;
 
         const vendorInput = document.getElementById('create-po-vendor');
@@ -1270,16 +1283,26 @@
         const prodObj = appData.products.find(p => p.name === pr.product);
         if (prodObj && prodObj.vendor) vendorInput.value = prodObj.vendor;
 
+        const form = document.getElementById('form-create-po');
         document.getElementById('c-ref-pr-row').value = pr.rowNumber;
-        document.getElementById('form-create-po').dataset.pruid = pr.uid || ""; 
+        form.dataset.prId = pr.prId || prId || "";
+        form.dataset.prid = pr.prId || prId || "";
+        form.dataset.pruid = pr.uid || "";
+        form.dataset.refPrUid = pr.prNumber || "";
         document.getElementById('modal-create-po-title').innerText = `อนุมัติและสร้างบิล (อ้างอิง ${pr.prNumber})`;
         document.getElementById('modal-create-po-subtitle').innerText = `คุณสามารถปรับยอดจำนวนสั่ง หรือเพิ่มสินค้ารายการอื่นได้ก่อนกดบันทึก`;
         document.getElementById('create-po-warehouse').value = pr.warehouse || "";
         document.getElementById('create-po-expected-date').value = "";
-        
+
+        // Populate all sibling items for this PR
+        const siblingItems = appData.prList.filter(p => (pr.prId && p.prId === pr.prId) || (pr.prNumber && p.prNumber === pr.prNumber));
+        const itemsToPopulate = siblingItems.length > 0 ? siblingItems : [pr];
+
         const container = document.getElementById('create-po-items-container');
         container.innerHTML = '';
-        addCreatePoItemRow(pr.product, pr.quantity, pr.unit, pr.sku);
+        itemsToPopulate.forEach(item => {
+            addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku);
+        });
 
         document.getElementById('modal-create-po').classList.remove('hidden');
         document.getElementById('modal-create-po').classList.add('flex');
@@ -1297,7 +1320,7 @@
         document.getElementById('create-po-vendor').value = group.vendor;
         document.getElementById('create-po-warehouse').value = group.warehouse;
         document.getElementById('create-po-expected-date').value = toDateInputValue(group.expectedDate || '');
-        
+
         // เติมข้อมูลรายการสินค้า
         const container = document.getElementById('create-po-items-container');
         container.innerHTML = '';
@@ -1336,12 +1359,12 @@
         delete form.dataset.prUid;
         delete form.dataset.refPrUid;
         delete form.dataset.poNumber;
-        
+
         document.getElementById('create-po-items-container').innerHTML = '';
         document.getElementById('create-po-expected-date').value = "";
         document.getElementById('btn-submit-direct-po').innerText = 'บันทึกสั่งซื้อ (Create PO)';
-        
-        addCreatePoItemRow(); 
+
+        addCreatePoItemRow();
         document.getElementById('modal-create-po').classList.remove('hidden');
         document.getElementById('modal-create-po').classList.add('flex');
     }
@@ -1399,7 +1422,7 @@
             const quantity = row.querySelector(".c-qty").value.trim();
             const sku = row.querySelector(".c-sku").value.trim();
             const unit = row.querySelector(".c-unit").value.trim();
-            
+
             if(!product || !quantity) hasError = true;
             else items.push({ sku, product, quantity, unit });
         });
@@ -1454,8 +1477,9 @@
                     closeCreatePoModal();
                 }
             } else if (refPrRow) {
+                const prId = form.dataset.prId || form.dataset.prid || "";
                 res = await apiAction("approvePR", {
-                    prRowNumber: parseInt(refPrRow), prUid: prUid, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
+                    prRowNumber: parseInt(refPrRow), prUid: prUid, prId: prId, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
                 });
                 if (res && res.success) {
                     closeCreatePoModal();
@@ -1506,7 +1530,7 @@
       if(appData.pendingPOs) {
           appData.pendingPOs.forEach(po => {
             const key = poBillGroupKey(po);
-            if (!groups[key]) groups[key] = { refPrUid: usableBillRefUid(po.refPrUid), poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, expectedDate: po.expectedDate || '', items: [] };
+            if (!groups[key]) groups[key] = { poId: po.poId || po.po_id || '', refPrUid: usableBillRefUid(po.refPrUid), poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, expectedDate: po.expectedDate || '', items: [] };
             if (!groups[key].expectedDate && po.expectedDate) groups[key].expectedDate = po.expectedDate;
             groups[key].items.push(po);
           });
@@ -1519,19 +1543,19 @@
         const countEl = document.getElementById('po-count');
         const search = document.getElementById('p-search').value.trim().toLowerCase();
         const statusFilter = document.getElementById('p-status').value;
-        
+
         container.innerHTML = '';
-        
+
         let filtered = groupedPOs.filter(group => {
             const hasOverdue = group.items.some(i => i.displayStatus === 'Overdue');
             const hasDraft = group.items.some(i => i.status === 'Draft GR');
             const hasPendingReview = group.items.some(i => i.status === 'Pending Review');
-            
+
             if(statusFilter === 'Overdue' && !hasOverdue) return false;
             if(statusFilter === 'Draft GR' && !hasDraft) return false;
             if(statusFilter === 'Pending Review' && !hasPendingReview) return false;
             if(statusFilter === 'Pending GR' && (hasOverdue || hasDraft || hasPendingReview)) return false;
-            
+
             if(search) {
                 const matchItem = group.items.some(i => i.product.toLowerCase().includes(search));
                 if(!group.vendor.toLowerCase().includes(search) && !(group.poNumber || '').toLowerCase().includes(search) && !matchItem) return false;
@@ -1543,7 +1567,7 @@
 
         filtered.forEach((group, idx) => {
             const card = document.createElement('div');
-            
+
             const hasOverdue = group.items.some(i => i.displayStatus === 'Overdue');
             const hasDraft = group.items.some(i => i.status === 'Draft GR');
             const hasPendingReview = group.items.some(i => i.status === 'Pending Review');
@@ -1551,7 +1575,7 @@
             const hasCompletedSibling = group.items.some(i => i.billHasCompletedSibling === true);
             const receivingStarted = hasDraft || hasPendingReview || hasBillReceivingStarted;
             const editBlocked = receivingStarted || hasCompletedSibling;
-            
+
             // เช็คว่าบิลนี้มาจากปุ่ม Direct PO หรือเปล่า
             const isDirectPO = isDirectBillRefUid(group.refPrUid) || group.items.some(i => isDirectBillRefUid(i.refPrUid) || (i.remark && i.remark.toString().includes('Direct PO')));
             let directBadge = isDirectPO ? `<span class="text-[9px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded shadow-sm border border-purple-200 ml-1">⚡ Direct PO</span>` : '';
@@ -1574,7 +1598,7 @@
                 cardClass = "glass-card p-4 flex flex-col h-full relative border-l-4 border-l-brand-blue bg-brand-blueLight/40 transition hover:shadow-md cursor-default";
                 statusBadgeHtml = `<span class="absolute -top-3 -right-2 bg-brand-blueLight text-brand-blue text-[10px] font-bold px-2.5 py-1 rounded-md border border-brand-blue/20 shadow-sm flex items-center gap-1"><i data-lucide="package" class="w-3 h-3"></i> กำลังลงของ</span>`;
             }
-            
+
             card.className = cardClass;
 
             let itemsHtml = '<div class="space-y-1.5 flex-1">';
@@ -1586,8 +1610,10 @@
             itemsHtml += '</div>';
 
             const deleteRequest = esc(JSON.stringify({
+                poId: group.poId || group.items?.[0]?.poId || '',
                 poUids: group.items.map(i => i.uid),
                 refPrUid: group.refPrUid || 'DIRECT',
+                expectedItemCount: group.items.length,
                 legacyBill: !group.refPrUid
             }));
             const deleteButtonHtml = `
@@ -1610,7 +1636,7 @@
                         ${expectedBadge}
                     </div>
                 </div>
-                
+
                 <div class="mt-auto pt-3 border-t border-gray-50 flex justify-between items-end">
                     <div class="bg-white border border-gray-200 px-2 py-1.5 rounded flex items-center gap-1.5 max-w-[60%] shadow-sm">
                         <span class="text-[10px] bg-brand-blueLight/50 text-brand-blue p-0.5 rounded shadow-sm"><i data-lucide="building-2" class="w-3 h-3"></i></span>
@@ -1626,7 +1652,7 @@
             `;
             container.appendChild(card);
         });
-        
+
         lucide.createIcons({ root: container });
     }
 
@@ -1635,8 +1661,10 @@
         if (deletePO.inFlight) return;
         const poUids = normalizeDeletePoUids(request && request.poUids);
         const refPrUid = normalizeDeleteBillRef(request && request.refPrUid);
+        const poId = request && request.poId ? String(request.poId).trim() : '';
         const legacyBill = request && request.legacyBill === true;
-        if (!poUids.length || !refPrUid) {
+        const expectedItemCount = Number(request && request.expectedItemCount) || poUids.length;
+        if (!poUids.length || expectedItemCount <= 0 || expectedItemCount !== poUids.length || (!legacyBill && !poId && !refPrUid)) {
             showNotification('ข้อมูลบิลไม่เป็นปัจจุบัน กรุณารีเฟรชก่อนลบ', 'error');
             return;
         }
@@ -1645,7 +1673,7 @@
             if (deletePO.inFlight) return;
             deletePO.inFlight = true;
             try {
-                await apiAction('deletePO', { poUids, refPrUid, expectedItemCount: poUids.length, legacyBill });
+                await apiAction('deletePO', { poId, poUids, refPrUid, expectedItemCount, legacyBill });
             } finally {
                 deletePO.inFlight = false;
             }
@@ -1696,6 +1724,40 @@
 
     function renderDeliveryInsights(data) {
         const content = document.getElementById('delivery-insight-content');
+        if (Array.isArray(data.insights)) {
+            const insights = data.insights;
+            const sampleCount = insights.reduce((sum, item) => sum + (Number(item.sampleCount) || 0), 0);
+            const rows = insights.map(item => {
+                const rate = item.onTimeRate === null || item.onTimeRate === undefined
+                    ? '<span class="text-gray-400 font-semibold">ข้อมูลไม่เพียงพอ</span>'
+                    : `<span class="font-bold text-brand-blue">${esc(item.onTimeRate)}%</span>`;
+                return `
+                    <tr>
+                        <td class="px-4 py-3 font-bold text-gray-800">${esc(item.vendor)}</td>
+                        <td class="px-4 py-3 text-right text-gray-600">${esc(item.totalOrders || 0)}</td>
+                        <td class="px-4 py-3 text-right text-gray-600">${esc(item.sampleCount || 0)}</td>
+                        <td class="px-4 py-3 text-right">${rate}</td>
+                    </tr>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="grid grid-cols-2 gap-3 mb-5">
+                    ${renderInsightKpi('ตัวอย่างที่ใช้', sampleCount, 'PO/GR ที่จับคู่ได้')}
+                    ${renderInsightKpi('Vendor ทั้งหมด', insights.length, 'รวม Vendor ที่ข้อมูลยังไม่พอ')}
+                </div>
+                <section class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="truck" class="w-4 h-4 text-brand-blue"></i> อัตราส่งตรงเวลาตาม Vendor</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-white text-xs text-gray-500"><tr><th class="text-left px-4 py-2">Vendor</th><th class="text-right px-4 py-2">ออเดอร์</th><th class="text-right px-4 py-2">ตัวอย่าง</th><th class="text-right px-4 py-2">ตรงเวลา</th></tr></thead>
+                            <tbody class="divide-y divide-gray-100">${rows || '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">ยังไม่มีข้อมูลการรับสินค้าที่ใช้คำนวณได้</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                </section>`;
+            lucide.createIcons({ root: content });
+            return;
+        }
         const summary = data.summary || {};
         const pendingRows = (data.pendingIncoming || []).slice(0, 15).map(renderIncomingInsightRow).join('');
         const vendorRows = (data.vendors || []).slice(0, 20).map(renderVendorInsightRow).join('');
@@ -1842,9 +1904,27 @@
         if(appData.grCompleted) {
             appData.grCompleted.forEach(item => {
                 const billRef = usableBillRefUid(item.refPrUid);
-                const key = billRef ? 'bill:' + billRef : `${item.poNumber}_${item.vendor}_${item.warehouse}`;
-                if(!groupedMatchData[key]) groupedMatchData[key] = { refPrUid: billRef || 'DIRECT', legacyBill: !billRef, poNumber: item.poNumber, vendor: item.vendor, warehouse: item.warehouse, ata: item.ata, receiver: item.receiverName, items: [] };
-                groupedMatchData[key].items.push(item);
+                const poId = item.poId || item.po_id || '';
+                const key = poId ? `poid:${poId}` : (billRef ? `bill:${billRef}` : `${item.poNumber}_${item.vendor}_${item.warehouse}`);
+                if(!groupedMatchData[key]) {
+                    groupedMatchData[key] = {
+                        poId: poId,
+                        refPrUid: billRef || 'DIRECT',
+                        legacyBill: !billRef,
+                        poNumber: item.poNumber,
+                        vendor: item.vendor,
+                        warehouse: item.warehouse,
+                        ata: item.ata,
+                        receiver: item.receiverName,
+                        items: [],
+                        extraItems: []
+                    };
+                }
+                if (item.isExtra || item.is_extra) {
+                    groupedMatchData[key].extraItems.push(item);
+                } else {
+                    groupedMatchData[key].items.push(item);
+                }
             });
         }
     }
@@ -1858,8 +1938,10 @@
             const block = document.createElement('div');
             block.className = "glass-card overflow-hidden shadow-sm";
             const completedDeleteRequest = esc(JSON.stringify({
+                poId: group.poId || group.items?.[0]?.poId || '',
                 poUids: group.items.map(item => item.uid),
                 refPrUid: group.refPrUid,
+                expectedItemCount: group.items.length,
                 legacyBill: group.legacyBill === true
             }));
             const completedDeleteButton = `
@@ -1869,7 +1951,7 @@
 
             let html = `
                 <div class="bg-brand-blue text-white px-4 md:px-5 py-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                    <div class="flex flex-col md:flex-row md:items-center gap-3 w-full md:w-auto">
+                    <div class="flex items-center gap-3">
                         <span class="font-bold text-lg text-white">กลุ่มรายการรอกระทบยอด</span>
                         <span class="text-xs text-white/90 bg-white/20 px-2 py-1.5 rounded border border-white/10 truncate">🏢 ${esc(group.vendor)} | 🏠 ${esc(group.warehouse)}</span>
                     </div>
@@ -1878,65 +1960,62 @@
                         ${completedDeleteButton}
                     </div>
                 </div>
-                
-                <div class="bg-brand-blueLight/30 border-b border-brand-blueLight px-4 py-2 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                    <span class="text-xs text-brand-blue font-bold flex items-center gap-1">
-                        <i data-lucide="zap" class="w-4 h-4"></i> จัดการด่วน (Quick Fill)
-                    </span>
+
+                <div class="p-3 bg-brand-blueLight/5 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <span class="text-xs text-gray-600 font-medium">ใส่เลข PO เพื่อเติมให้ทุกรายการในกลุ่มนี้อัตโนมัติ:</span>
                     <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <input type="text" id="quick-fill-po-${gIdx}" class="input-field py-1 px-2 text-sm border-brand-blue/30 w-full sm:w-48 bg-white" placeholder="ระบุเลข PO เพื่อใส่ทั้งหมด...">
-                        <button onclick="applyQuickFillPO(${gIdx})" class="btn-create py-1 px-3 text-xs bg-brand-blue text-white rounded whitespace-nowrap min-w-max">
-                            นำไปใช้
+                        <input type="text" id="quick-fill-po-${gIdx}" class="input-field py-1 px-3 text-sm font-bold border-brand-blue/30 focus:border-brand-blue uppercase w-full sm:w-48" placeholder="เช่น PO26-0001">
+                        <button onclick="applyQuickFillPO(${gIdx})" class="btn-outline-action bg-white border-brand-blue text-brand-blue hover:bg-brand-blue hover:text-white py-1 px-3 text-xs font-bold whitespace-nowrap">
+                            เติมทั้งกลุ่ม
                         </button>
                     </div>
                 </div>
 
-                <div class="p-0" id="match-items-group-${gIdx}">
+                <div id="match-items-group-${gIdx}">
             `;
 
             group.items.forEach((item, iIdx) => {
-                const poQty = parseFloat(item.quantity) || 0; 
-                const grQty = parseFloat(item.grQty) || 0;    
+                const poQty = parseFloat(item.quantity) || 0;
+                const grQty = parseFloat(item.grQty) || 0;
                 const isMatched = poQty === grQty;
-                const isExtra = poQty === 0 && grQty > 0; 
-                
-                const matchIcon = isMatched ? 
-                    `<div class="bg-green-100 text-green-600 p-2 rounded-full"><i data-lucide="check" class="w-5 h-5"></i></div>` : 
-                    (isExtra ? 
-                        `<div class="bg-purple-100 text-purple-600 p-2 rounded-full font-bold text-xs"><i data-lucide="gift" class="w-5 h-5"></i></div>` :
+                const isExtra = poQty === 0 && grQty > 0;
+
+                const matchIcon = isMatched ?
+                    `<div class="bg-green-100 text-green-600 p-2 rounded-full"><i data-lucide="check" class="w-5 h-5"></i></div>` :
+                    (isExtra ?
+                        `<div class="bg-purple-100 text-purple-600 p-2 rounded-full"><i data-lucide="gift" class="w-5 h-5"></i></div>` :
                         `<div class="bg-red-100 text-red-600 p-2 rounded-full"><i data-lucide="alert-triangle" class="w-5 h-5"></i></div>`
                     );
 
                 html += `
-                    <div class="border-b border-gray-100 last:border-0 p-4 md:p-5 ${isExtra ? 'bg-purple-50/20' : 'bg-white'} match-row">
-                        <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-3 gap-2">
-                            <p class="font-bold text-gray-800 text-base">${iIdx+1}. ${esc(item.product)} ${isExtra ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-2 shadow-sm border border-purple-200">สินค้านอกบิล/ของแถม</span>' : ''}</p>
-                            <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
-                                <label class="text-xs text-gray-600 font-bold whitespace-nowrap">เลข PO:</label>
-                                <input type="text" id="match-item-po-${item.rowNumber}" class="input-field po-input-gIdx-${gIdx} py-1 px-2 text-sm font-bold text-brand-blue border-gray-300 focus:border-brand-blue w-full md:w-40 bg-white" value="${esc(item.poNumber || group.poNumber || '')}" placeholder="ระบุเลข PO">
+                <div class="border-b border-gray-100 last:border-0 p-4 md:p-5 ${isExtra ? 'bg-purple-50/20' : 'bg-white'} match-row">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <p class="font-bold text-gray-800 text-base">${iIdx+1}. ${esc(item.product)} ${isExtra ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-2 shadow-sm border border-purple-200">สินค้านอกบิล/ของแถม</span>' : ''}</p>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs text-gray-500 font-medium">เลข PO ประจำสินค้า:</span>
+                            <input type="text" id="match-item-po-${item.rowNumber}" class="input-field po-input-gIdx-${gIdx} py-1 px-2 text-sm font-bold border-brand-blue/30 focus:border-brand-blue uppercase w-36 text-center" placeholder="PO..." value="${esc(item.poNumber || '')}">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 bg-gray-50/60 p-3.5 rounded-xl border border-gray-100">
+                        <div class="flex items-center justify-between border-b md:border-b-0 md:border-r border-gray-200 pb-3 md:pb-0 md:pr-6">
+                            <div>
+                                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">ยอดสั่งซื้อ (PO)</span>
+                                <span class="text-lg font-bold ${isExtra ? 'text-gray-400' : 'text-gray-800'}">${poQty} <span class="text-xs font-normal">${esc(item.unit || '')}</span></span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[11px] font-bold text-gray-400 block mb-0.5">กำหนดส่ง</span>
+                                <span class="text-xs text-gray-600 font-medium">${esc(item.expectedDate || '-')}</span>
                             </div>
                         </div>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 relative">
-                            <div class="bg-brand-blueLight/30 p-3 rounded-lg border border-brand-blueLight">
-                                <span class="text-[10px] font-bold text-brand-blue uppercase tracking-wider mb-2 block">1. ฝั่งใบสั่งซื้อ (PO)</span>
-                                <div class="flex justify-between items-end">
-                                    <span class="text-xs text-gray-500">จำนวนสั่ง:</span>
-                                    <span class="text-lg font-bold ${isExtra ? 'text-gray-400' : 'text-gray-800'}">${poQty} <span class="text-xs font-normal">${esc(item.unit || '')}</span></span>
-                                </div>
-                            </div>
-                            
-                            <div class="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-1 border border-gray-100 shadow-sm">
-                                ${matchIcon}
-                            </div>
 
-                            <div class="bg-brand-orangeLight/50 p-3 rounded-lg border border-brand-orangeLight relative">
-                                <span class="text-[10px] font-bold text-brand-orange uppercase tracking-wider mb-2 block">2. ฝั่งรับจริง (GR) - <span class="text-brand-orange">แก้ไขยอดได้</span></span>
-                                <div class="flex items-center gap-3">
-                                    <div class="flex-1">
-                                        <label class="text-[10px] text-gray-500">จำนวนรับ</label>
+                        <div class="flex items-center justify-between md:pl-2">
+                            <div class="flex items-center gap-3">
+                                ${matchIcon}
+                                <div>
+                                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">ยอดตรวจรับจริง (GR)</span>
+                                    <div class="flex items-center gap-1">
                                         <input type="number" id="match-grqty-${item.rowNumber}" class="input-field py-1.5 px-2 text-base font-bold ${isMatched || isExtra ? 'text-brand-orange' : 'text-red-600'} border-orange-200" value="${grQty}">
-                                    </div>
                                     <div class="w-1/3">
                                         <label class="text-[10px] text-gray-500">หน่วย</label>
                                         <input type="text" disabled class="input-field py-1.5 px-2 text-sm border-orange-100 bg-orange-50/50 cursor-not-allowed text-gray-600" value="${esc(item.unit || '')}">
@@ -1948,11 +2027,43 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div class="mt-3">
                             <input type="text" id="match-remark-${item.rowNumber}" class="input-field bg-gray-50 text-sm ${isMatched || isExtra ? 'border-gray-200' : 'border-brand-orange bg-brand-orangeLight/30 text-brand-orange'}" placeholder="ระบุหมายเหตุสำหรับการตั้งหนี้ (ถ้ามี)..." value="${isMatched ? '' : esc(item.remark ? item.remark : '')}">
                         </div>
                     </div>
+                `;
+            });
+
+            (group.extraItems || []).forEach((extra, xIdx) => {
+                const exQty = parseFloat(extra.grQty) || parseFloat(extra.quantity) || 1;
+                html += `
+                <div class="border-b border-gray-100 last:border-0 p-4 md:p-5 bg-purple-50/20 match-row">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <p class="font-bold text-gray-800 text-base">${group.items.length + xIdx + 1}. ${esc(extra.product || extra.productName)} <span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-2 shadow-sm border border-purple-200">สินค้านอกบิล/ของแถม (ในระบบ)</span></p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 bg-gray-50/60 p-3.5 rounded-xl border border-gray-100">
+                        <div class="flex items-center justify-between border-b md:border-b-0 md:border-r border-gray-200 pb-3 md:pb-0 md:pr-6">
+                            <div>
+                                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">ยอดสั่งซื้อ (PO)</span>
+                                <span class="text-lg font-bold text-gray-400">0 <span class="text-xs font-normal">${esc(extra.unit || 'ชิ้น')}</span></span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[11px] font-bold text-gray-400 block mb-0.5">ประเภท</span>
+                                <span class="text-xs text-purple-600 font-medium">ของแถม</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between md:pl-2">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-purple-100 text-purple-600 p-2 rounded-full"><i data-lucide="gift" class="w-5 h-5"></i></div>
+                                <div>
+                                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">ยอดตรวจรับจริง (GR)</span>
+                                    <span class="text-base font-bold text-brand-orange">${exQty} ${esc(extra.unit || 'ชิ้น')}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 `;
             });
 
@@ -1972,18 +2083,18 @@
             block.innerHTML = html;
             container.appendChild(block);
         });
-        
+
         lucide.createIcons({ root: container });
     }
 
     function addExtraGRItem(gIdx) {
         const container = document.getElementById(`match-items-group-${gIdx}`);
         const div = document.createElement('div');
-        div.className = "border-b border-gray-100 last:border-0 p-5 bg-brand-orangeLight/30 match-row relative";
+        div.className = "border-b border-gray-100 last:border-0 p-5 bg-brand-orangeLight/30 match-row match-extra-row relative";
         div.innerHTML = `
             <button onclick="this.parentElement.remove()" class="absolute top-2 right-2 text-red-400 hover:text-red-600 bg-white p-1 rounded-md shadow-sm border-none"><i data-lucide="x" class="w-4 h-4"></i></button>
             <p class="font-bold text-brand-orange mb-2 text-sm flex items-center gap-1"><i data-lucide="gift" class="w-4 h-4"></i> เพิ่มของแถม / สินค้านอกบิล</p>
-            
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
                 <div class="bg-gray-50 p-3 rounded-lg border border-gray-100 flex items-center justify-center opacity-50">
                     <span class="text-xs text-gray-400">ไม่มีใน PO เดิม</span>
@@ -1991,16 +2102,16 @@
                 <div class="bg-brand-orangeLight/50 p-3 rounded-lg border border-brand-orange/30">
                     <div class="mb-2">
                         <label class="text-[10px] text-gray-500">ชื่อสินค้าใหม่</label>
-                        <input type="text" class="input-field py-1.5 text-sm font-bold text-gray-800 border-orange-200 focus:border-brand-orange" placeholder="ระบุชื่อสินค้า...">
+                        <input type="text" class="input-field match-extra-product py-1.5 text-sm font-bold text-gray-800 border-orange-200 focus:border-brand-orange" placeholder="ระบุชื่อสินค้า...">
                     </div>
                     <div class="flex items-center gap-2">
-                        <div class="flex-1"><label class="text-[10px] text-gray-500">จำนวนรับ</label><input type="number" class="input-field py-1.5 px-2 text-base font-bold text-brand-orange border-brand-orange/30 focus:border-brand-orange" placeholder="0"></div>
-                        <div class="w-1/3"><label class="text-[10px] text-gray-500">หน่วย</label><input type="text" class="input-field py-1.5 px-2 text-sm border-brand-orange/20 focus:border-brand-orange" placeholder="ระบุ"></div>
-                        <div class="w-1/3"><label class="text-[10px] text-gray-500">Loc.In</label><input type="text" class="input-field py-1.5 px-2 text-sm border-brand-orange/20 focus:border-brand-orange" placeholder="ระบุ"></div>
+                        <div class="flex-1"><label class="text-[10px] text-gray-500">จำนวนรับ</label><input type="number" class="input-field match-extra-qty py-1.5 px-2 text-base font-bold text-brand-orange border-brand-orange/30 focus:border-brand-orange" placeholder="0"></div>
+                        <div class="w-1/3"><label class="text-[10px] text-gray-500">หน่วย</label><input type="text" class="input-field match-extra-unit py-1.5 px-2 text-sm border-brand-orange/20 focus:border-brand-orange" placeholder="ระบุ"></div>
+                        <div class="w-1/3"><label class="text-[10px] text-gray-500">Loc.In</label><input type="text" class="input-field match-extra-loc py-1.5 px-2 text-sm border-brand-orange/20 focus:border-brand-orange" placeholder="ระบุ"></div>
                     </div>
                 </div>
             </div>
-            <div class="mt-3"><input type="text" class="input-field bg-white text-sm border-brand-orange/20 focus:border-brand-orange" placeholder="ระบุหมายเหตุ..." value="ของแถมฟรี"></div>
+            <div class="mt-3"><input type="text" class="input-field match-extra-remark bg-white text-sm border-brand-orange/20 focus:border-brand-orange" placeholder="ระบุหมายเหตุ..." value="ของแถมฟรี"></div>
         `;
         container.appendChild(div);
         lucide.createIcons({ root: div });
@@ -2008,7 +2119,7 @@
 
     function confirmClosePO(gIdx) {
         const group = Object.values(groupedMatchData)[gIdx];
-        
+
         let allHavePO = true;
         let missingPOProduct = "";
 
@@ -2017,7 +2128,7 @@
                 const grQtyInput = document.getElementById(`match-grqty-${item.rowNumber}`);
                 const remarkInput = document.getElementById(`match-remark-${item.rowNumber}`);
                 const poInput = document.getElementById(`match-item-po-${item.rowNumber}`);
-                
+
                 const originalPoQty = parseFloat(item.quantity) || 0;
                 const revisedGrQty = grQtyInput ? parseFloat(grQtyInput.value) : (parseFloat(item.grQty) || 0);
                 const remark = remarkInput ? remarkInput.value.trim() : '';
@@ -2035,12 +2146,34 @@
                 return showNotification(`กรุณาระบุเลข PO สำหรับรายการ "${missingPOProduct}" ให้ครบถ้วนก่อนส่งตั้งหนี้`, 'warning');
             }
 
+            // Gather newly added extra items from DOM
+            const extraRows = document.querySelectorAll(`#match-items-group-${gIdx} .match-extra-row`);
+            const collectedExtras = [];
+            extraRows.forEach(row => {
+                const prod = (row.querySelector('.match-extra-product')?.value || '').trim();
+                const qty = parseFloat(row.querySelector('.match-extra-qty')?.value) || 0;
+                const unit = (row.querySelector('.match-extra-unit')?.value || 'ชิ้น').trim();
+                const locIn = (row.querySelector('.match-extra-loc')?.value || '').trim();
+                const remark = (row.querySelector('.match-extra-remark')?.value || 'ของแถมฟรี').trim();
+                if (prod && qty > 0) {
+                    collectedExtras.push({ product: prod, productName: prod, grQty: qty, quantity: qty, unit, locIn, remark });
+                }
+            });
+
+            const allExtras = [...(group.extraItems || []), ...collectedExtras];
+
             if (!can('closePO')) { showNotification('ไม่มีสิทธิ์ปิด APV', 'error'); return; }
             showConfirmModal(`ยืนยันการตรวจสอบและ Approve บิลใช่หรือไม่?\n\n* ระบบจะบันทึกเลข PO แยกตามรายสินค้าลงในชีท\n* ข้อมูลจะถูกล็อคและไม่สามารถแก้ไขยอดรับได้อีก`, () => {
-                apiAction('closePO', { items: itemsToClose });
+                apiAction('closePO', {
+                    poId: group.poId || group.items?.[0]?.poId || '',
+                    refPrUid: group.refPrUid || group.items?.[0]?.refPrUid || '',
+                    expectedItemCount: group.items.length,
+                    items: itemsToClose,
+                    extraItems: allExtras
+                });
             });
         } catch(e) {
-            showNotification(e.message, 'warning'); 
+            showNotification(e.message, 'warning');
         }
     }
 
@@ -2049,14 +2182,14 @@
         if (!quickFillValue) {
             return showNotification('กรุณาระบุเลข PO ที่ต้องการใช้กับทุกรายการ', 'warning');
         }
-        
+
         const inputs = document.querySelectorAll(`.po-input-gIdx-${gIdx}`);
         let count = 0;
         inputs.forEach(input => {
             input.value = quickFillValue;
             count++;
         });
-        
+
         showNotification(`ใส่เลข PO ให้ ${count} รายการเรียบร้อย`, 'success');
     }
 
@@ -2067,10 +2200,12 @@
         groupedAPVData = {};
         if(appData.apvList) {
             appData.apvList.forEach(item => {
+                const poId = item.poId || item.po_id || '';
                 const refPrUid = usableBillRefUid(item.refPrUid);
-                const key = refPrUid ? `bill:${refPrUid}` : `${item.poNumber}_${item.vendor}`;
-                if(!groupedAPVData[key]) groupedAPVData[key] = { refPrUid: refPrUid || 'DIRECT', legacyBill: !refPrUid, poNumber: item.poNumber, vendor: item.vendor, items: [] };
-                groupedAPVData[key].items.push(item);
+                const key = poId ? `poid:${poId}` : (refPrUid ? `bill:${refPrUid}` : `${item.poNumber}_${item.vendor}`);
+                if(!groupedAPVData[key]) groupedAPVData[key] = { poId: poId, refPrUid: refPrUid || 'DIRECT', legacyBill: !refPrUid, poNumber: item.poNumber, vendor: item.vendor, items: [], extraItems: [] };
+                if (item.isExtra || item.is_extra) groupedAPVData[key].extraItems.push(item);
+                else groupedAPVData[key].items.push(item);
             });
         }
     }
@@ -2078,17 +2213,19 @@
     function renderTab4_APV() {
         const container = document.getElementById('apv-container');
         container.innerHTML = '';
-        if(Object.keys(groupedAPVData).length === 0) { 
-            container.innerHTML = '<p class="col-span-full text-gray-500 text-center py-10 bg-white rounded-xl border border-dashed">ไม่มีรายการที่พร้อมตั้งหนี้</p>'; 
-            return; 
+        if(Object.keys(groupedAPVData).length === 0) {
+            container.innerHTML = '<p class="col-span-full text-gray-500 text-center py-10 bg-white rounded-xl border border-dashed">ไม่มีรายการที่พร้อมตั้งหนี้</p>';
+            return;
         }
 
         Object.values(groupedAPVData).forEach(apv => {
             const card = document.createElement('div');
             card.className = "glass-card p-5 border-l-4 border-l-green-500 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition hover:shadow-md";
             const apvDeleteRequest = esc(JSON.stringify({
+                poId: apv.poId || apv.items?.[0]?.poId || '',
                 poUids: apv.items.map(item => item.uid),
                 refPrUid: apv.refPrUid,
+                expectedItemCount: apv.items.length,
                 legacyBill: apv.legacyBill === true
             }));
             const apvDeleteButton = `
