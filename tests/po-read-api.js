@@ -10,63 +10,98 @@ const end = html.indexOf('\n    async function ', start + 1);
 assert(start >= 0 && end > start, 'readApiCall must exist in index.html');
 const functionSource = html.slice(start, end);
 
-async function runScenario(responses) {
-  const requests = [];
-  const timeouts = [];
-  const context = vm.createContext({
-    console,
-    AbortController,
-    setTimeout: (callback, ms) => {
-      timeouts.push(ms);
-      return setTimeout(callback, ms);
-    },
-    clearTimeout,
-    DATA_SCRIPT_URL: 'https://fixture.invalid/exec',
-    AppVersionGuard: { blockIfStale: async () => false },
-    getSessionToken: () => 'fixture-token',
-    delay: async () => {},
-    fetch: async (url, options) => {
-      requests.push({ url, options });
-      const next = responses.shift();
-      if (next instanceof Error) throw next;
-      return next;
-    }
-  });
-  vm.runInContext(functionSource, context);
-  context.__payload = { includeCompleted: false };
-  const result = await vm.runInContext("readApiCall('getInitialData', __payload)", context);
-  return { result, requests, timeouts };
-}
-
 (async () => {
-  const httpRetry = await runScenario([
-    { ok: false, status: 404, text: async () => '<html>temporary</html>' },
-    { ok: true, status: 200, text: async () => JSON.stringify({ success: true, value: 'http-retry' }) }
-  ]);
-  assert.strictEqual(httpRetry.requests.length, 2);
-  assert.strictEqual(httpRetry.result.value, 'http-retry');
+  // Test 1: getInitialData
+  {
+    let receivedPayload = null;
+    let receivedToken = null;
+    const context = vm.createContext({
+      console,
+      AppVersionGuard: { blockIfStale: async () => false },
+      getSessionToken: () => 'token-123',
+      AkraSupabasePO: {
+        getInitialData: async (payload, token) => {
+          receivedPayload = payload;
+          receivedToken = token;
+          return {
+            pendingPOs: [{ uid: 'item-1', status: 'Pending GR' }],
+            grCompleted: [{ uid: 'item-2', status: 'GR Completed' }],
+            prList: [{ prId: 'PR-1' }],
+            apvList: [{ uid: 'item-3' }],
+            vendors: ['Vendor A']
+          };
+        }
+      }
+    });
+    vm.runInContext(functionSource, context);
+    const res = await vm.runInContext("readApiCall('getInitialData', { includeCompleted: true })", context);
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(receivedToken, 'token-123');
+    assert.strictEqual(receivedPayload.includeCompleted, true);
+    assert.strictEqual(res.pendingPOs.length, 1);
+    assert.strictEqual(res.grCompleted.length, 1);
+    assert.strictEqual(res.prList.length, 1);
+    assert.strictEqual(res.apvList.length, 1);
+    assert.deepStrictEqual(res.vendors, ['Vendor A']);
+  }
 
-  const jsonRetry = await runScenario([
-    { ok: true, status: 200, text: async () => '<html>temporary</html>' },
-    { ok: true, status: 200, text: async () => JSON.stringify({ success: true, value: 'json-retry' }) }
-  ]);
-  assert.strictEqual(jsonRetry.requests.length, 2);
-  assert.strictEqual(jsonRetry.result.value, 'json-retry');
-  const requestBody = JSON.parse(jsonRetry.requests[0].options.body);
-  assert.strictEqual(requestBody.action, 'getInitialData');
-  assert.strictEqual(requestBody.token, 'fixture-token');
+  // Test 2: getProducts
+  {
+    const context = vm.createContext({
+      console,
+      AppVersionGuard: { blockIfStale: async () => false },
+      getSessionToken: () => 'token-123',
+      AkraSupabasePO: {
+        getProducts: async () => ({
+          products: [
+            { sku: 'SKU1', name: 'Product 1', vendor: 'Vendor 1' },
+            { sku: 'SKU2', name: 'Product 2', default_vendor: 'Vendor 2' }
+          ]
+        })
+      }
+    });
+    vm.runInContext(functionSource, context);
+    const res = await vm.runInContext("readApiCall('getProducts')", context);
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.products.length, 2);
+    assert.strictEqual(JSON.stringify(res.vendors.sort()), JSON.stringify(['Vendor 1', 'Vendor 2']));
+  }
 
-  const exhausted = await runScenario([
-    new Error('NETWORK_FAILURE'),
-    { ok: false, status: 503, text: async () => 'temporary' }
-  ]);
-  assert.strictEqual(exhausted.requests.length, 2);
-  assert.strictEqual(exhausted.result.success, false);
-  assert.match(exhausted.result.message, /ลองใหม่/);
-  assert.deepStrictEqual(exhausted.timeouts, [60000, 60000], 'each read attempt must have a bounded timeout');
-  assert(exhausted.requests.every(request => request.options.signal), 'each read attempt must pass an abort signal');
+  // Test 3: Stale version block
+  {
+    let called = false;
+    const context = vm.createContext({
+      console,
+      AppVersionGuard: { blockIfStale: async () => true },
+      getSessionToken: () => 'token-123',
+      AkraSupabasePO: {
+        getInitialData: async () => { called = true; return {}; }
+      }
+    });
+    vm.runInContext(functionSource, context);
+    const res = await vm.runInContext("readApiCall('getInitialData')", context);
+    assert.strictEqual(res.success, false);
+    assert.match(res.message, /เวอร์ชันใหม่/);
+    assert.strictEqual(called, false);
+  }
 
-  console.log('PASS po-read-api: bounded reads retry once, retain request contract, and fail safely after exhaustion');
+  // Test 4: Error handling fail-safe
+  {
+    const context = vm.createContext({
+      console,
+      AppVersionGuard: { blockIfStale: async () => false },
+      getSessionToken: () => 'token-123',
+      AkraSupabasePO: {
+        getInitialData: async () => { throw new Error('database_unavailable'); }
+      }
+    });
+    vm.runInContext(functionSource, context);
+    const res = await vm.runInContext("readApiCall('getInitialData')", context);
+    assert.strictEqual(res.success, false);
+    assert.strictEqual(res.message, 'database_unavailable');
+  }
+
+  console.log('PASS po-read-api: readApiCall delegates to AkraSupabasePO, maps projections, checks stale version, and fails closed');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

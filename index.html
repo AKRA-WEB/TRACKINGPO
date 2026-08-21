@@ -270,7 +270,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260820.06";
+    const CURRENT_VERSION = "20260820.07";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -661,7 +661,6 @@
         if(confirmCallback) confirmCallback();
         closeConfirmModal();
     });
-
     // ฟังก์ชันสร้าง Badge สีตามคลังสินค้า (CI Colors)
     function getWarehouseBadge(warehouse) {
         switch(warehouse) {
@@ -713,21 +712,67 @@
         processDataAndRender();
     }
 
-    const PO_MUTATION_TIMEOUT_MS = 50000;
-
     async function apiAction(action, payload) {
         if (await AppVersionGuard.blockIfStale(action)) return { success: false, message: "พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ" };
 
-        if (typeof window !== "undefined" && window.AkraSupabasePO && (action === "createPO" || action === "deletePO")) {
-            try {
-                if (action === "createPO") {
-                    showDataLoading("กำลังบันทึกบิล...");
-                    const supaRes = await AkraSupabasePO.saveDirectPO({
-                        poNumber: payload.poNumber || ('PO-DIR-' + Date.now().toString().slice(-6)),
-                        poDate: new Date().toISOString().split('T')[0],
+        showDataLoading("กำลังประมวลผล...");
+        try {
+            const token = getSessionToken();
+            let result;
+
+            if (action === "createPO") {
+                result = await AkraSupabasePO.createPO({
+                    poNumber: payload.poNumber || ('PO-DIR-' + Date.now().toString().slice(-6)),
+                    poDate: new Date().toISOString().split('T')[0],
+                    vendor: payload.vendor,
+                    warehouse: payload.warehouse,
+                    expectedDate: payload.expectedDate || '',
+                    items: (payload.items || []).map(it => ({
+                        sku: it.sku || '',
+                        product: it.product || it.productName,
+                        quantity: Number(it.quantity || it.poQty || 0),
+                        unit: it.unit || 'ชิ้น',
+                        expectedDate: payload.expectedDate || ''
+                    }))
+                }, token);
+                hideDataLoading();
+                showNotification(result.message || 'บันทึก Direct PO เรียบร้อยแล้ว', 'success');
+                loadInitialDataInBackground(true);
+                return result;
+            } else if (action === "updatePO") {
+                result = await AkraSupabasePO.updatePO({
+                    refPrUid: payload.refPrUid || '',
+                    vendor: payload.vendor,
+                    warehouse: payload.warehouse,
+                    expectedDate: payload.expectedDate || '',
+                    items: (payload.items || []).map(it => ({
+                        id: it.uid || it.id,
+                        sku: it.sku || '',
+                        product: it.product || it.productName,
+                        quantity: Number(it.quantity || it.poQty || 0),
+                        unit: it.unit || 'ชิ้น',
+                        expectedDate: payload.expectedDate || ''
+                    }))
+                }, token);
+                hideDataLoading();
+                showNotification(result.message || 'อัปเดต PO เรียบร้อยแล้ว', 'success');
+                loadInitialDataInBackground(true);
+                return result;
+            } else if (action === "deletePO" || action === "deleteBill") {
+                localStorage.removeItem("CACHE_PO_ACTIVE_V3");
+                result = await AkraSupabasePO.deleteBill(payload, token);
+                removeDeletedBillFromLocalData(payload);
+                hideDataLoading();
+                showNotification(result.message || 'ลบบิลเรียบร้อยแล้ว', 'success');
+                loadInitialDataInBackground(true);
+                return result;
+            } else if (action === "approvePR") {
+                result = await AkraSupabasePO.approvePR({
+                    prId: payload.prId || payload.prUid,
+                    poData: {
                         vendor: payload.vendor,
                         warehouse: payload.warehouse,
-                        remark: '',
+                        expectedDate: payload.expectedDate || '',
                         items: (payload.items || []).map(it => ({
                             sku: it.sku || '',
                             product: it.product || it.productName,
@@ -735,99 +780,47 @@
                             unit: it.unit || 'ชิ้น',
                             expectedDate: payload.expectedDate || ''
                         }))
-                    }, getSessionToken());
-                    hideDataLoading();
-                    showNotification('สร้างบิล Direct PO สำเร็จแล้ว', 'success');
-                    return {
-                        success: true,
-                        message: 'สร้างบิลสำเร็จ',
-                        poNumber: supaRes.poNumber,
-                        directBillRefUid: supaRes.directBillRefUid,
-                        poUids: supaRes.poUids
-                    };
-                } else if (action === "deletePO") {
-                    showDataLoading("กำลังลบบิล...");
-                    await AkraSupabasePO.deleteBill(payload, getSessionToken());
-                    hideDataLoading();
-                    showNotification('ลบบิลสำเร็จแล้ว', 'success');
-                    removeDeletedBillFromLocalData(payload);
-                    return { success: true, message: 'ลบบิลสำเร็จ' };
-                }
-            } catch(supaErr) {
-                console.warn('Supabase PO action error, falling back to GAS:', supaErr);
-            }
-        }
-
-        showDataLoading("กำลังประมวลผล...");
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), PO_MUTATION_TIMEOUT_MS);
-        try {
-            const res = await fetch(DATA_SCRIPT_URL, {
-                method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ action, data: payload, token: getSessionToken() }),
-                signal: controller.signal
-            });
-            const result = await res.json();
-
-            if (action === "deletePO") {
-                localStorage.removeItem("CACHE_PO_ACTIVE_V3");
-                if (!result.success) {
-                    hideDataLoading();
-                    showNotification("เกิดข้อผิดพลาด: " + (result.message || "ไม่สามารถลบบิลได้ กรุณาตรวจสอบข้อมูลล่าสุด"), "error");
-                    return result;
-                }
-
-                const requestedUids = normalizeDeletePoUids(payload.poUids);
-                const requestedRefPrUid = normalizeDeleteBillRef(payload.refPrUid);
-                const responseMatchesRequest =
-                    Number(result.deletedPOCount || result.deletedCount) >= requestedUids.length &&
-                    normalizeDeleteBillRef(result.refPrUid) === requestedRefPrUid;
-                if (!responseMatchesRequest) {
-                    hideDataLoading();
-                    showNotification("ไม่สามารถยืนยันผลการลบจากข้อมูลล่าสุดได้ กรุณาตรวจสอบบิลแล้วลองอีกครั้ง", "error");
-                    return { success: false, reason: "stale_data", message: "Delete confirmation mismatch" };
-                }
-
-                removeDeletedBillFromLocalData(payload);
+                    }
+                }, token);
+                const rowToRemove = payload.rowNumber || payload.prRowNumber;
+                appData.prList = (appData.prList || []).filter(pr => pr.rowNumber !== rowToRemove && pr.uid !== payload.prUid && pr.prId !== payload.prId);
+                processDataAndRender();
                 hideDataLoading();
-                showNotification(result.message || "ลบบิลสำเร็จ", "success");
+                showNotification(result.message || 'อนุมัติ PR สำเร็จ', 'success');
+                loadInitialDataInBackground(true);
+                return result;
+            } else if (action === "rejectPR") {
+                result = await AkraSupabasePO.rejectPR({
+                    prId: payload.prId || payload.prUid,
+                    remark: payload.remark || ''
+                }, token);
+                const rowToRemove = payload.rowNumber || payload.prRowNumber;
+                appData.prList = (appData.prList || []).filter(pr => pr.rowNumber !== rowToRemove && pr.uid !== payload.prUid && pr.prId !== payload.prId);
+                processDataAndRender();
+                hideDataLoading();
+                showNotification(result.message || 'ปฏิเสธ PR สำเร็จ', 'success');
+                loadInitialDataInBackground(true);
+                return result;
+            } else if (action === "closePO") {
+                result = await AkraSupabasePO.closePO({
+                    refPrUid: payload.refPrUid || (payload.items && payload.items[0]?.refPrUid) || '',
+                    items: payload.items
+                }, token);
+                const rowsToRemove = (payload.items || []).map(i => i.rowNumber || i.uid);
+                appData.grCompleted = (appData.grCompleted || []).filter(po => !rowsToRemove.includes(po.rowNumber) && !rowsToRemove.includes(po.uid));
+                processDataAndRender();
+                hideDataLoading();
+                showNotification(result.message || 'ส่งฝ่าย APV สำเร็จ', 'success');
                 loadInitialDataInBackground(true);
                 return result;
             }
-
-            // ปิดหน้าโหลดทันทีที่บันทึกเสร็จ
-            hideDataLoading();
-
-            if(result.success) {
-                showNotification(result.message || "ดำเนินการสำเร็จ", "success");
-
-                // [เทคนิค Optimistic Update] ลบข้อมูลที่ทำรายการแล้วออกจากหน้าจอทันที แอปจะดูไวขึ้น 300%
-                if (action === "rejectPR" || action === "approvePR") {
-                    const rowToRemove = payload.rowNumber || payload.prRowNumber;
-                    appData.prList = appData.prList.filter(pr => pr.rowNumber !== rowToRemove);
-                    processDataAndRender();
-                } else if (action === "closePO") {
-                    const rowsToRemove = payload.items.map(i => i.rowNumber);
-                    appData.grCompleted = appData.grCompleted.filter(po => !rowsToRemove.includes(po.rowNumber));
-                    processDataAndRender();
-                }
-                
-                // สั่งดึงข้อมูลใหม่มาเซฟทับแบบเงียบๆ เบื้องหลัง (Background Sync)
-                loadInitialDataInBackground(true);
-            } else {
-                showNotification("เกิดข้อผิดพลาด: " + result.message, "error");
-            }
-            return result;
-        } catch(e) {
+            throw new Error('unknown_action:' + action);
+        } catch (e) {
             console.warn("API Error:", e);
-            const isTimeout = e && e.name === "AbortError";
-            const errorMsg = isTimeout ? "การทำรายการใช้เวลานานเกินไป กรุณารีเฟรชเพื่อตรวจสอบสถานะล่าสุด" : "การเชื่อมต่อกับเซิร์ฟเวอร์ล้มเหลว";
+            const errorMsg = e.message || "การเชื่อมต่อกับเซิร์ฟเวอร์ล้มเหลว";
             showNotification(errorMsg, "error");
             hideDataLoading();
-            return { success: false, message: errorMsg, isTimeout: isTimeout };
-        } finally {
-            clearTimeout(timeoutId);
+            return { success: false, message: errorMsg };
         }
     }
 
@@ -849,64 +842,41 @@
     }
 
     async function readApiCall(action, payload = null) {
-        if (typeof window !== "undefined" && window.AkraSupabasePO && (action === 'getInitialData' || action === 'getProducts')) {
-            try {
-                if (action === 'getInitialData') {
-                    const supa = await AkraSupabasePO.getInitialData(payload || {}, getSessionToken());
-                    if (supa && supa.success) {
-                        return {
-                            success: true,
-                            pendingPOs: supa.pendingPOs || [],
-                            grCompleted: supa.grCompleted || [],
-                            apvList: supa.apvList || [],
-                            prList: []
-                        };
-                    }
-                } else if (action === 'getProducts') {
-                    const prods = await AkraSupabasePO.getProducts();
-                    const vendorSet = new Set();
-                    (prods || []).forEach(p => {
-                        const v = p.vendor || p.default_vendor;
-                        if (v) vendorSet.add(v);
-                    });
-                    return { success: true, products: prods, vendors: Array.from(vendorSet) };
-                }
-            } catch (supaErr) {
-                console.warn('Supabase PO read error, falling back to GAS:', supaErr);
-            }
-        }
         if (await AppVersionGuard.blockIfStale(action)) {
             return { success: false, message: 'พบเวอร์ชันใหม่ กรุณารีโหลดก่อนทำรายการ' };
         }
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000);
-            try {
-                const response = await fetch(DATA_SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action, data: payload, token: getSessionToken() }),
-                    signal: controller.signal
+        const token = getSessionToken();
+        try {
+            if (action === 'getInitialData') {
+                const supa = await AkraSupabasePO.getInitialData(payload || {}, token);
+                return {
+                    success: true,
+                    pendingPOs: supa.pendingPOs || [],
+                    grCompleted: supa.grCompleted || [],
+                    prList: supa.prList || [],
+                    apvList: supa.apvList || [],
+                    vendors: supa.vendors || []
+                };
+            } else if (action === 'getProducts') {
+                const res = await AkraSupabasePO.getProducts(payload || {}, token);
+                const prods = res.products || [];
+                const vendorSet = new Set();
+                (prods || []).forEach(p => {
+                    const v = p.vendor || p.default_vendor;
+                    if (v) vendorSet.add(v);
                 });
-                if (!response.ok) throw new Error(`HTTP_${response.status}`);
-                const text = await response.text();
-                try {
-                    return JSON.parse(text);
-                } catch (parseError) {
-                    throw new Error('NON_JSON_RESPONSE');
-                }
-            } catch (error) {
-                console.warn('PO read API failed:', { action, attempt, error: error.message || String(error) });
-                if (attempt < 2) {
-                    await delay(1200);
-                    continue;
-                }
-                return { success: false, message: 'ไม่สามารถดึงข้อมูลจากระบบได้ กรุณาลองใหม่' };
-            } finally {
-                clearTimeout(timeoutId);
+                return { success: true, products: prods, vendors: Array.from(vendorSet) };
+            } else if (action === 'getDeliveryInsights' || action === 'getVendorDeliveryInsights') {
+                return await AkraSupabasePO.getDeliveryInsights(payload || {}, token);
             }
+            throw new Error('unknown_read_action:' + action);
+        } catch (error) {
+            console.warn('PO read API failed:', { action, error: error.message || String(error) });
+            return { success: false, message: error.message || 'ไม่สามารถดึงข้อมูลจากระบบได้ กรุณาลองใหม่' };
         }
     }
+
+
 
     async function loadProductsBackground() {
         if (poProductsLoaded && appData.products && appData.products.length > 1000) return;

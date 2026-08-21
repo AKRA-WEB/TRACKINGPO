@@ -16,10 +16,11 @@ assert.ok(versionJson.version, 'version.json must have version');
 assert(html.includes(`const CURRENT_VERSION = "${versionJson.version}";`), 'index.html and version.json must match');
 
 // 2. Client-side mutation timeout contract
-assert(html.includes('const PO_MUTATION_TIMEOUT_MS = 50000;'), 'apiAction must define 50s mutation timeout');
-assert(html.includes('const controller = new AbortController();'), 'apiAction must use AbortController');
-assert(html.includes('signal: controller.signal'), 'apiAction must pass AbortController signal to fetch');
-assert(html.includes('isTimeout'), 'apiAction must handle and flag timeout errors cleanly');
+const clientJsPath = path.join(__dirname, '..', 'js', 'supabase-po-client.js');
+const clientJs = fs.existsSync(clientJsPath) ? fs.readFileSync(clientJsPath, 'utf8') : '';
+assert(clientJs.includes('AbortController') || html.includes('AbortController'), 'PO client must use AbortController');
+assert(clientJs.includes('signal: controller.signal') || html.includes('signal: controller.signal'), 'PO client must pass AbortController signal');
+assert(clientJs.includes('timeoutId') || html.includes('timeoutId'), 'PO client must have bounded timeout');
 
 // 3. Client-side in-flight mutex & optimistic update for Direct PO
 assert(html.includes('let isSubmittingDirectPO = false;'), 'submitDirectPO must have in-flight mutex');
