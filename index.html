@@ -909,7 +909,7 @@
     }
 
     const PO_ACTIVE_CACHE_TTL = 60 * 1000;
-    const PO_PRODUCTS_CACHE_TTL = 2 * 60 * 60 * 1000;
+    const PO_PRODUCTS_CACHE_TTL = 12 * 60 * 60 * 1000;
     function getCache(key, ttlMs) { try { const raw = localStorage.getItem(key); if (!raw) return null; const w = JSON.parse(raw); if (Date.now() - (w._ts||0) > ttlMs) { localStorage.removeItem(key); return null; } return w._d; } catch(e) { localStorage.removeItem(key); return null; } }
     function setCache(key, data) {
         try {
