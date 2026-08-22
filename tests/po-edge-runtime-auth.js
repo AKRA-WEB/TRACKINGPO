@@ -6,6 +6,8 @@ const vm = require('node:vm');
 console.log('=== Running Executable PO Edge Runtime Auth & Insights Tests ===\n');
 
 const poApiSource = fs.readFileSync(path.join(__dirname, '..', '..', 'database', 'supabase', 'functions', 'po-api', 'index.ts'), 'utf8');
+const sharedJwtSource = fs.readFileSync(path.join(__dirname, '..', '..', 'database', 'supabase', 'functions', '_shared', 'main-jwt.ts'), 'utf8')
+  .replace(/^export\s+/gm, '');
 
 // Strip TypeScript types to execute in Node VM
 function transpileTsToJs(tsCode) {
@@ -35,7 +37,7 @@ function transpileTsToJs(tsCode) {
     .replace(/([A-Za-z0-9_$]+)!([.;,\s\)])/g, '$1$2');
 }
 
-const jsCode = transpileTsToJs(poApiSource);
+const jsCode = transpileTsToJs(`${sharedJwtSource}\n${poApiSource}`);
 
 function createEdgeRuntime(mockDbState = {}) {
   const dbCalls = {
@@ -66,13 +68,15 @@ function createEdgeRuntime(mockDbState = {}) {
     Error: Error,
     TextEncoder: TextEncoder,
     TextDecoder: TextDecoder,
+    atob: atob,
+    btoa: btoa,
     crypto: globalThis.crypto,
     Deno: {
       env: {
         get: (k) => {
-          if (k === 'MAIN_VERIFY_URL') return 'https://mock-main.app/verify';
+          if (k === 'MAIN_JWT_SECRET') return 'test-main-jwt-secret-at-least-32-characters';
           if (k === 'SUPABASE_URL') return 'https://mock-sb.app';
-          if (k === 'SUPABASE_SERVICE_ROLE_KEY') return 'mock-key';
+          if (k === 'PO_SUPABASE_SECRET_KEY') return 'sb_secret_test-server-key';
           if (k === 'PO_ALLOWED_ORIGINS') return 'https://akra-web.github.io';
           return '';
         }
@@ -83,17 +87,18 @@ function createEdgeRuntime(mockDbState = {}) {
     },
     fetch: async (url, opts = {}) => {
       const urlStr = String(url);
-      if (urlStr.includes('/verify')) {
-        // Main SSO verify mock
-        return {
-          ok: true,
-          json: async () => context._mockUserVerification || { success: true, valid: true, user: { id: 'usr1', roles: ['ADMIN'], perms: {} } }
-        };
-      }
       if (urlStr.includes('/rest/v1/rpc/')) {
+        assert.equal(new Headers(opts.headers || {}).has('Authorization'), false, 'Modern Supabase secret keys must not be sent as bearer JWTs');
         const rpcName = urlStr.split('/rpc/')[1].split('?')[0];
         const body = opts.body ? JSON.parse(opts.body) : {};
         dbCalls.rpcCalls.push({ rpc: rpcName, body });
+        if (rpcName === 'auth_validate_session_v1') {
+          return {
+            ok: true,
+            headers: new Headers(),
+            json: async () => ({ valid: mockDbState.sessionValid !== false })
+          };
+        }
         if (mockDbState.rpcError) {
           return {
             ok: false,
@@ -107,6 +112,7 @@ function createEdgeRuntime(mockDbState = {}) {
         };
       }
       if (urlStr.includes('/rest/v1/')) {
+        assert.equal(new Headers(opts.headers || {}).has('Authorization'), false, 'Modern Supabase secret keys must not be sent as bearer JWTs');
         const query = urlStr.split('/rest/v1/')[1];
         dbCalls.restQueries.push({ query, method: opts.method || 'GET' });
 
@@ -133,8 +139,7 @@ function createEdgeRuntime(mockDbState = {}) {
       }
       return { ok: false, status: 404, json: async () => ({ error: 'not_found' }) };
     },
-    dbCalls,
-    _mockUserVerification: null
+    dbCalls
   };
 
   const vmContext = vm.createContext(context);
@@ -142,7 +147,18 @@ function createEdgeRuntime(mockDbState = {}) {
 
   async function handleRequest(action, data = {}, user = null, token = 'test-token') {
     if (user) {
-      context._mockUserVerification = { success: true, valid: true, user };
+      const { legacyToken, ...claims } = user;
+      token = await vmContext.signMainJwt({
+        ...claims,
+        name: user.name || user.id,
+        mustChangePassword: false,
+        ...(legacyToken ? {} : {
+          tokenVersion: 2,
+          sessionVersion: user.sessionVersion || 1,
+          authorizationRevision: user.authorizationRevision || 'revision-1'
+        }),
+        exp: Date.now() + 60000
+      }, 'test-main-jwt-secret-at-least-32-characters');
     }
     const req = new Request('https://mock-sb.app/functions/v1/po-api', {
       method: 'POST',
@@ -161,6 +177,23 @@ function createEdgeRuntime(mockDbState = {}) {
 }
 
 async function runTests() {
+  console.log('Test 0: Testing forged JWT denial before database access...');
+  {
+    const runtime = createEdgeRuntime({ products: [{ id: 'p-forged', name: 'Forged Access' }] });
+    const forgedPayload = Buffer.from(JSON.stringify({
+      id: 'attacker',
+      name: 'Attacker',
+      roles: ['ADMIN'],
+      perms: { 'app-po': ['read', 'createPO'] },
+      exp: Date.now() + 60000
+    })).toString('base64url');
+    const result = await runtime.handleRequest('getProducts', {}, null, `e30.${forgedPayload}.forged`);
+    assert.equal(result.status, 401, 'forged JWT must return HTTP 401');
+    assert.equal(runtime.dbCalls.restQueries.length, 0, 'forged JWT must issue zero REST queries');
+    assert.equal(runtime.dbCalls.rpcCalls.length, 0, 'forged JWT must issue zero RPC calls');
+    console.log('  [PASS] Forged JWT is denied with zero database calls.');
+  }
+
   // Test 1: Explicit-Empty Permissions Deny Read and Write with ZERO Database Calls
   console.log('Test 1: Testing explicit-empty perms [app-po: []] with ADMIN role (HTTP Handler)...');
   {
@@ -212,7 +245,8 @@ async function runTests() {
       id: 'legacy_admin',
       name: 'Legacy Admin',
       roles: ['ADMIN'],
-      perms: {} // no app-po key at all
+      perms: {}, // no app-po key at all
+      legacyToken: true
     };
 
     const res = await runtime.handleRequest('getProducts', {}, legacyAdminUser);
@@ -220,6 +254,40 @@ async function runTests() {
     assert.ok(res.body.success, 'Legacy ADMIN should succeed getProducts');
     assert.ok(runtime.dbCalls.restQueries.length > 0, 'Database queries should be executed for authorized user');
     console.log('  [PASS] Legacy token correctly falls back to ADMIN role when app-po is undefined.');
+  }
+
+  console.log('\nTest 2B: Testing v2 token without an app-po permission contract...');
+  {
+    const runtime = createEdgeRuntime();
+    const result = await runtime.handleRequest('getProducts', {}, {
+      id: 'v2_admin_missing_contract',
+      roles: ['ADMIN'],
+      perms: {}
+    });
+    assert.equal(result.status, 403, 'v2 ADMIN without app-po grants must fail closed');
+    assert.equal(result.body.reason, 'permission_denied');
+    assert.equal(runtime.dbCalls.restQueries.length, 0, 'permission denial must issue zero REST queries');
+    assert.equal(runtime.dbCalls.rpcCalls.length, 0, 'permission denial must issue zero RPC calls');
+    console.log('  [PASS] v2 missing permission contract fails closed before database access.');
+  }
+
+  console.log('\nTest 2C: Testing revoked v2 session denial...');
+  {
+    const runtime = createEdgeRuntime({ sessionValid: false });
+    const result = await runtime.handleRequest('getProducts', {}, {
+      id: 'revoked_user',
+      roles: ['USER'],
+      perms: { 'app-po': ['read'] }
+    });
+    assert.equal(result.status, 401, 'revoked session must return HTTP 401');
+    assert.equal(result.body.reason, 'invalid_or_expired_token');
+    assert.equal(runtime.dbCalls.restQueries.length, 0, 'revoked session must not query domain tables');
+    assert.deepEqual(
+      runtime.dbCalls.rpcCalls.map(call => call.rpc),
+      ['auth_validate_session_v1'],
+      'revoked session may call only the private session validator'
+    );
+    console.log('  [PASS] Revoked v2 session is rejected before domain database access.');
   }
 
   // Test 3: Read-Only Granular Permission ['read'] allows read, denies write
