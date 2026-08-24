@@ -33,6 +33,7 @@ async function runScenario(isManualRefresh) {
     var poProductsLoaded = true;
     var poSecondaryDataGeneration = 0;
     var poActiveLoadGeneration = 0;
+    var poActiveDataRendered = false;
     var initialDataPrefetch = null;
     const PO_ACTIVE_CACHE_TTL = 1;
     const PO_PRODUCTS_CACHE_TTL = 1;
@@ -67,6 +68,7 @@ async function runSecondaryInvalidationRace() {
     var poProductsLoaded = true;
     var poSecondaryDataGeneration = 0;
     var poActiveLoadGeneration = 0;
+    var poActiveDataRendered = false;
     var initialDataPrefetch = null;
     var groupedMatchData = {};
     const PO_ACTIVE_CACHE_TTL = 1;
@@ -110,6 +112,7 @@ async function runActiveLatestWinsRace() {
     var poProductsLoaded = true;
     var poSecondaryDataGeneration = 0;
     var poActiveLoadGeneration = 0;
+    var poActiveDataRendered = false;
     var initialDataPrefetch = null;
     const PO_ACTIVE_CACHE_TTL = 1;
     const PO_PRODUCTS_CACHE_TTL = 1;

@@ -263,14 +263,15 @@
       </div>
   </div>
 
-  <div id="data-loader" class="fixed inset-0 bg-white/80 z-[9000] hidden flex-col justify-center items-center backdrop-blur-sm">
-      <div class="spinner mb-4"></div>
+  <div id="data-loader" role="status" aria-live="polite" aria-busy="false" class="fixed inset-0 bg-white/80 z-[9000] hidden flex-col justify-center items-center backdrop-blur-sm">
+      <div id="data-loader-spinner" class="spinner mb-4"></div>
       <p class="text-brand-blue font-medium" id="data-loader-text">กำลังประมวลผล...</p>
+      <button type="button" id="data-loader-retry" onclick="loadInitialData(true)" class="hidden mt-5 px-5 py-2.5 rounded-lg bg-brand-blue text-white font-medium shadow-md hover:bg-[#11146B]">ลองอีกครั้ง</button>
   </div>
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260822.01";
+    const CURRENT_VERSION = "20260824.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -414,6 +415,7 @@
     var poProductsLoaded = false;
     var poSecondaryDataGeneration = 0;
     var poActiveLoadGeneration = 0;
+    var poActiveDataRendered = false;
     var initialDataPrefetch = null;
     var groupedPOs = [];
     var groupedMatchData = {};
@@ -700,12 +702,27 @@
     // --- Custom UI Tools ---
     function showDataLoading(text = 'กำลังโหลด...') {
         document.getElementById('data-loader-text').innerText = text;
-        document.getElementById('data-loader').classList.remove('hidden');
-        document.getElementById('data-loader').classList.add('flex');
+        document.getElementById('data-loader-spinner').classList.remove('hidden');
+        document.getElementById('data-loader-retry').classList.add('hidden');
+        const loader = document.getElementById('data-loader');
+        if (loader.setAttribute) loader.setAttribute('aria-busy', 'true');
+        loader.classList.remove('hidden');
+        loader.classList.add('flex');
+    }
+    function showDataLoadFailure(message) {
+        document.getElementById('data-loader-text').innerText = message;
+        document.getElementById('data-loader-spinner').classList.add('hidden');
+        document.getElementById('data-loader-retry').classList.remove('hidden');
+        const loader = document.getElementById('data-loader');
+        if (loader.setAttribute) loader.setAttribute('aria-busy', 'false');
+        loader.classList.remove('hidden');
+        loader.classList.add('flex');
     }
     function hideDataLoading() {
-        document.getElementById('data-loader').classList.add('hidden');
-        document.getElementById('data-loader').classList.remove('flex');
+        const loader = document.getElementById('data-loader');
+        if (loader.setAttribute) loader.setAttribute('aria-busy', 'false');
+        loader.classList.add('hidden');
+        loader.classList.remove('flex');
     }
     function showNotification(msg, type='success') {
         const c = document.getElementById('toast-container');
@@ -1064,6 +1081,7 @@
         }
         const cachedActive = getCache('CACHE_PO_ACTIVE_V3', PO_ACTIVE_CACHE_TTL);
         const cachedProducts = getCache('CACHE_PO_PRODUCTS_V2', PO_PRODUCTS_CACHE_TTL);
+        let cacheUsable = isManualRefresh && poActiveDataRendered;
         if (cachedActive && !isManualRefresh) {
             try {
                 appData = { ...cachedActive, grCompleted: [], apvList: [] };
@@ -1077,11 +1095,14 @@
                 poMatchLoaded = false;
                 poApvLoaded = false;
                 processDataAndRender();
+                cacheUsable = true;
+                poActiveDataRendered = true;
             } catch (e) { showDataLoading('กำลังโหลดข้อมูล...'); }
         } else {
             showDataLoading('กำลังโหลดข้อมูล...');
         }
 
+        let loadFailureMessage = '';
         try {
             const fetchPromise = (!isManualRefresh && initialDataPrefetch)
                 ? initialDataPrefetch
@@ -1093,17 +1114,23 @@
                 setCache('CACHE_PO_ACTIVE_V3', result);
                 appData = { ...result, grCompleted: appData.grCompleted || [], apvList: appData.apvList || [], products: appData.products || [] };
                 processDataAndRender();
+                poActiveDataRendered = true;
                 if (!poProductsLoaded || !appData.products || appData.products.length <= 1000) scheduleProductsBackground();
-            } else if (!cachedActive) {
+            } else if (!cacheUsable) {
+                loadFailureMessage = 'โหลดข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง';
                 showNotification('โหลดข้อมูลล้มเหลว: ' + result.message, 'error');
             }
         } catch(e) {
-            if (activeLoadGeneration === poActiveLoadGeneration && !cachedActive) {
+            if (activeLoadGeneration === poActiveLoadGeneration && !cacheUsable) {
+                loadFailureMessage = 'ไม่สามารถเชื่อมต่อเพื่อโหลดข้อมูล กรุณาลองอีกครั้ง';
                 showNotification('ไม่สามารถดึงข้อมูลจากระบบได้', 'error');
             }
         }
 
-        if (activeLoadGeneration === poActiveLoadGeneration && (!cachedActive || isManualRefresh)) hideDataLoading();
+        if (activeLoadGeneration === poActiveLoadGeneration && (!cacheUsable || isManualRefresh)) {
+            if (loadFailureMessage && !cacheUsable) showDataLoadFailure(loadFailureMessage);
+            else hideDataLoading();
+        }
     }
 
     function processDataAndRender() {
