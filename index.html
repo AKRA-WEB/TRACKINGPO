@@ -271,7 +271,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260824.01";
+    const CURRENT_VERSION = "20260830.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -965,7 +965,7 @@
                 const prods = data.products || [];
                 const vendorSet = new Set();
                 (prods || []).forEach(p => {
-                    const v = p.vendor || p.default_vendor;
+                    const v = p.last_vendor || p.vendor || p.default_vendor;
                     if (v) vendorSet.add(v);
                 });
                 return { success: true, products: prods, vendors: Array.from(vendorSet) };
@@ -983,7 +983,7 @@
 
     async function loadProductsBackground() {
         if (poProductsLoaded && appData.products && appData.products.length > 1000) return;
-        const cached = getCache('CACHE_PO_PRODUCTS_V2', PO_PRODUCTS_CACHE_TTL);
+        const cached = getCache('CACHE_PO_PRODUCTS_V3', PO_PRODUCTS_CACHE_TTL);
         if (cached && cached.products && cached.products.length > 1000) {
             appData.products = cached.products || [];
             if (cached.vendors && cached.vendors.length > 0) {
@@ -997,7 +997,7 @@
         try {
             const result = await readApiCall('getProducts', {});
             if (result.success && result.products && result.products.length > 0) {
-                setCache('CACHE_PO_PRODUCTS_V2', result);
+                setCache('CACHE_PO_PRODUCTS_V3', result);
                 appData.products = result.products || [];
                 if (result.vendors && result.vendors.length > 0) {
                     appData.vendors = Array.from(new Set([...(appData.vendors || []), ...result.vendors]));
@@ -1216,8 +1216,8 @@
 
         const groupedPRs = {};
         appData.prList.forEach(pr => {
-            const prodObj = appData.products.find(p => p.name === pr.product);
-            const vendorName = (prodObj && prodObj.vendor) ? prodObj.vendor : 'ไม่ระบุผู้จำหน่าย';
+            const prodObj = appData.products.find(p => p.name === pr.product || (p.sku && pr.sku && p.sku === pr.sku));
+            const vendorName = (prodObj && (prodObj.last_vendor || prodObj.vendor || prodObj.default_vendor)) ? (prodObj.last_vendor || prodObj.vendor || prodObj.default_vendor) : 'ไม่ระบุผู้จำหน่าย';
 
             if(!groupedPRs[vendorName]) {
                 groupedPRs[vendorName] = [];
@@ -1292,9 +1292,10 @@
                 for (let i = 0; i < appData.products.length; i++) {
                     const p = appData.products[i];
                     const name = (p.name || p.product_name || '').toLowerCase();
+                    const subname = (p.subname || '').toLowerCase();
                     const sku = (p.sku || '').toLowerCase();
-                    const vendor = (p.vendor || p.default_vendor || '').toLowerCase();
-                    if (tokens.every(t => name.includes(t) || sku.includes(t) || vendor.includes(t))) {
+                    const vendor = (p.last_vendor || p.vendor || p.default_vendor || '').toLowerCase();
+                    if (tokens.every(t => name.includes(t) || subname.includes(t) || sku.includes(t) || vendor.includes(t))) {
                         filtered.push(p);
                         if (filtered.length >= 30) break;
                     }
@@ -1317,9 +1318,17 @@
 
             filtered.forEach(p => {
                 const li = document.createElement("li");
-                li.className = "px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center";
-                const vendorLabel = p.vendor || p.default_vendor || "";
-                li.innerHTML = `<span>${esc(p.name || p.product_name)}</span> <span class="text-[10px] text-gray-400 truncate max-w-[120px]">${esc(vendorLabel)}</span>`;
+                li.className = "px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center gap-2";
+                const vendorLabel = p.last_vendor || p.vendor || p.default_vendor || "";
+                const whLabel = p.last_warehouse || "";
+                let badgesHtml = '';
+                if (vendorLabel) {
+                    badgesHtml += `<span class="text-[10px] text-brand-blue bg-brand-blueLight/70 px-2 py-0.5 rounded font-semibold truncate max-w-[130px] border border-brand-blue/20" title="Vendor: ${esc(vendorLabel)}">${esc(vendorLabel)}</span>`;
+                }
+                if (whLabel) {
+                    badgesHtml += `<span class="text-[10px] text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded font-bold border border-gray-200" title="คลังล่าสุด: ${esc(whLabel)}">คลัง ${esc(whLabel)}</span>`;
+                }
+                li.innerHTML = `<span class="truncate">${esc(p.name || p.product_name)}</span> <div class="flex items-center gap-1.5 flex-shrink-0">${badgesHtml}</div>`;
                 li.onmousedown = function(e) {
                     e.preventDefault();
                     inputEl.value = p.name || p.product_name;
@@ -1335,6 +1344,12 @@
                     if (vendorLabel) {
                         const vendorInput = document.getElementById("create-po-vendor");
                         if (vendorInput) vendorInput.value = vendorLabel;
+                    }
+                    if (whLabel) {
+                        const whSelect = document.getElementById("create-po-warehouse");
+                        if (whSelect && !whSelect.value) {
+                            whSelect.value = whLabel;
+                        }
                     }
                     suggestionBox.classList.add("hidden");
                 };
@@ -1382,8 +1397,9 @@
 
         const vendorInput = document.getElementById('create-po-vendor');
         vendorInput.value = "";
-        const prodObj = appData.products.find(p => p.name === pr.product);
-        if (prodObj && prodObj.vendor) vendorInput.value = prodObj.vendor;
+        const prodObj = appData.products.find(p => p.name === pr.product || (p.sku && pr.sku && p.sku === pr.sku));
+        const prVendor = (prodObj && (prodObj.last_vendor || prodObj.vendor || prodObj.default_vendor)) || "";
+        if (prVendor) vendorInput.value = prVendor;
 
         const form = document.getElementById('form-create-po');
         document.getElementById('c-ref-pr-row').value = pr.rowNumber;
@@ -1393,7 +1409,7 @@
         form.dataset.refPrUid = pr.prNumber || "";
         document.getElementById('modal-create-po-title').innerText = `อนุมัติและสร้างบิล (อ้างอิง ${pr.prNumber})`;
         document.getElementById('modal-create-po-subtitle').innerText = `คุณสามารถปรับยอดจำนวนสั่ง หรือเพิ่มสินค้ารายการอื่นได้ก่อนกดบันทึก`;
-        document.getElementById('create-po-warehouse').value = pr.warehouse || "";
+        document.getElementById('create-po-warehouse').value = pr.warehouse || (prodObj && prodObj.last_warehouse) || "";
         document.getElementById('create-po-expected-date').value = "";
 
         // Populate all sibling items for this PR

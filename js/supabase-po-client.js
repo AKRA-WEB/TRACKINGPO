@@ -79,7 +79,7 @@
             const q = (query || '').toLowerCase().trim();
             if (!q) return prods.slice(0, limit);
             return prods
-                .filter(p => (p.name && p.name.toLowerCase().includes(q)) || (p.sku && p.sku.toLowerCase().includes(q)))
+                .filter(p => (p.name && p.name.toLowerCase().includes(q)) || (p.sku && p.sku.toLowerCase().includes(q)) || (p.subname && p.subname.toLowerCase().includes(q)))
                 .slice(0, limit);
         },
         API_URL
