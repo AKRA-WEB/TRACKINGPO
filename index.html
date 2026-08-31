@@ -271,7 +271,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260831.01";
+    const CURRENT_VERSION = "20260831.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -982,9 +982,9 @@
 
 
     async function loadProductsBackground() {
-        if (poProductsLoaded && appData.products && appData.products.length > 1000) return;
-        const cached = getCache('CACHE_PO_PRODUCTS_V3', PO_PRODUCTS_CACHE_TTL);
-        if (cached && cached.products && cached.products.length > 1000) {
+        if (poProductsLoaded && appData.products && appData.products.length > 4000) return;
+        const cached = getCache('CACHE_PO_PRODUCTS_V4', PO_PRODUCTS_CACHE_TTL);
+        if (cached && cached.products && cached.products.length > 4000) {
             appData.products = cached.products || [];
             if (cached.vendors && cached.vendors.length > 0) {
                 appData.vendors = Array.from(new Set([...(appData.vendors || []), ...cached.vendors]));
@@ -997,7 +997,7 @@
         try {
             const result = await readApiCall('getProducts', {});
             if (result.success && result.products && result.products.length > 0) {
-                setCache('CACHE_PO_PRODUCTS_V3', result);
+                setCache('CACHE_PO_PRODUCTS_V4', result);
                 appData.products = result.products || [];
                 if (result.vendors && result.vendors.length > 0) {
                     appData.vendors = Array.from(new Set([...(appData.vendors || []), ...result.vendors]));
@@ -1080,12 +1080,12 @@
             appData.apvList = [];
         }
         const cachedActive = getCache('CACHE_PO_ACTIVE_V3', PO_ACTIVE_CACHE_TTL);
-        const cachedProducts = getCache('CACHE_PO_PRODUCTS_V2', PO_PRODUCTS_CACHE_TTL);
+        const cachedProducts = getCache('CACHE_PO_PRODUCTS_V4', PO_PRODUCTS_CACHE_TTL);
         let cacheUsable = isManualRefresh && poActiveDataRendered;
         if (cachedActive && !isManualRefresh) {
             try {
                 appData = { ...cachedActive, grCompleted: [], apvList: [] };
-                if (cachedProducts && cachedProducts.products && cachedProducts.products.length > 1000) {
+                if (cachedProducts && cachedProducts.products && cachedProducts.products.length > 4000) {
                     appData.products = cachedProducts.products || [];
                     if (cachedProducts.vendors && cachedProducts.vendors.length > 0) {
                         appData.vendors = Array.from(new Set([...(appData.vendors || []), ...cachedProducts.vendors]));
@@ -1115,7 +1115,7 @@
                 appData = { ...result, grCompleted: appData.grCompleted || [], apvList: appData.apvList || [], products: appData.products || [] };
                 processDataAndRender();
                 poActiveDataRendered = true;
-                if (!poProductsLoaded || !appData.products || appData.products.length <= 1000) scheduleProductsBackground();
+                if (!poProductsLoaded || !appData.products || appData.products.length <= 4000) scheduleProductsBackground();
             } else if (!cacheUsable) {
                 loadFailureMessage = 'โหลดข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง';
                 showNotification('โหลดข้อมูลล้มเหลว: ' + result.message, 'error');
