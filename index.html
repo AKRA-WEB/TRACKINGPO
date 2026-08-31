@@ -271,7 +271,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260830.01";
+    const CURRENT_VERSION = "20260831.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -1295,7 +1295,8 @@
                     const subname = (p.subname || '').toLowerCase();
                     const sku = (p.sku || '').toLowerCase();
                     const vendor = (p.last_vendor || p.vendor || p.default_vendor || '').toLowerCase();
-                    if (tokens.every(t => name.includes(t) || subname.includes(t) || sku.includes(t) || vendor.includes(t))) {
+                    const unit = (p.unit || '').toLowerCase();
+                    if (tokens.every(t => name.includes(t) || subname.includes(t) || sku.includes(t) || vendor.includes(t) || unit.includes(t))) {
                         filtered.push(p);
                         if (filtered.length >= 30) break;
                     }
@@ -1319,9 +1320,13 @@
             filtered.forEach(p => {
                 const li = document.createElement("li");
                 li.className = "px-3 py-2.5 hover:bg-brand-blueLight/50 cursor-pointer text-sm font-medium text-gray-700 flex justify-between items-center gap-2";
+                const unitLabel = String(p.unit || '').trim();
                 const vendorLabel = p.last_vendor || p.vendor || p.default_vendor || "";
                 const whLabel = p.last_warehouse || "";
                 let badgesHtml = '';
+                if (unitLabel) {
+                    badgesHtml += `<span class="text-[10px] text-brand-orange bg-orange-50 px-2 py-0.5 rounded font-bold border border-orange-100 whitespace-nowrap" title="หน่วยสินค้า: ${esc(unitLabel)}">หน่วย: ${esc(unitLabel)}</span>`;
+                }
                 if (vendorLabel) {
                     badgesHtml += `<span class="text-[10px] text-brand-blue bg-brand-blueLight/70 px-2 py-0.5 rounded font-semibold truncate max-w-[130px] border border-brand-blue/20" title="Vendor: ${esc(vendorLabel)}">${esc(vendorLabel)}</span>`;
                 }
