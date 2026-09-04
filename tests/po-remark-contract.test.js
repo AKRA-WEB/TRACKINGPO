@@ -256,5 +256,42 @@ assert.strictEqual(interceptedApiPayloads.updatePO.remark, 'แก้ไขห�
 assert.strictEqual(interceptedApiPayloads.updatePO.items[0].remark, 'แก้ไขหมายเหตุสินค้า', 'updatePO item must receive item remark');
 console.log('[PASS] 9. apiAction serializes and forwards bill and item remarks to createPO and updatePO');
 
+// 11. Verify "Direct PO" suppression in Tab 2 cards and openEditPOForm
+context.appData = {
+  pendingPOs: [
+    {
+      uid: 'item-dir-1',
+      poId: 'po-dir-1',
+      refPrUid: 'DIRECT-999',
+      poNumber: 'PO26-DIR999',
+      vendor: 'SUPPLIER DIRECT',
+      warehouse: 'W2',
+      expectedDate: '2026-09-10',
+      product: 'สินค้า Direct PO 1',
+      quantity: 5,
+      unit: 'ลัง',
+      sku: 'DIR-01',
+      billRemark: 'Direct PO',
+      itemRemark: 'Direct PO (Edited)',
+      poRemark: 'Direct PO',
+      status: 'Pending GR',
+      displayStatus: 'Pending GR'
+    }
+  ]
+};
+context.groupPOData();
+context.renderTab2_PO();
+const directCardHtml = poContainer.children[0].innerHTML;
+assert.ok(!directCardHtml.includes('หมายเหตุบิล:'), 'PO card must NOT display bill remark banner for Direct PO');
+assert.ok(!directCardHtml.includes('↳ หมายเหตุ:'), 'PO card must NOT display item remark for Direct PO');
+
+context.openEditPOForm(context.groupedPOs[0]);
+assert.strictEqual(createPoRemark.value, '', 'openEditPOForm create-po-remark must be empty for Direct PO');
+const directEditRow = itemsContainer.children[itemsContainer.children.length - 1];
+const editRemarkInput = directEditRow.querySelector('.c-item-remark');
+assert.strictEqual(editRemarkInput.value, '', 'openEditPOForm item remark must be empty for Direct PO');
+console.log('[PASS] 10. "Direct PO" remarks cleanly suppressed from Tab 2 cards and openEditPOForm');
+
 console.log('\n🌟 ALL PO BILL & ITEM REMARK CONTRACT TESTS PASSED (100%)! 🌟');
 })();
+

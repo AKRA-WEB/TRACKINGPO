@@ -660,6 +660,15 @@
         });
     }
 
+    function cleanDirectPoRemark(text) {
+        if (!text) return '';
+        return String(text)
+            .replace(/(?:^|\b)(?:(?:หมายเหตุ\s*(?:PO)?|PO)\s*[:\-–—]\s*)?(?:Direct\s*PO\s*Web\s*App|Direct\s*PO\s*\(Edited\)|Direct\s*PO|DirectPO|Ref\s*PR)(?:\b|$)/gi, '')
+            .replace(/^[\s:\-|/()]+|[\s:\-|/()]+$/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
     function usableBillRefUid(value) {
         const ref = String(value || '').trim();
         return ref && ref !== 'DIRECT' ? ref : '';
@@ -1472,13 +1481,14 @@
         document.getElementById('create-po-warehouse').value = group.warehouse;
         document.getElementById('create-po-expected-date').value = toDateInputValue(group.expectedDate || '');
         const remarkEl = document.getElementById('create-po-remark');
-        if (remarkEl) remarkEl.value = group.billRemark || group.poRemark || '';
+        if (remarkEl) remarkEl.value = cleanDirectPoRemark(group.billRemark || group.poRemark || '');
 
         // เติมข้อมูลรายการสินค้า
         const container = document.getElementById('create-po-items-container');
         container.innerHTML = '';
         group.items.forEach(item => {
-            const itemRemark = item.itemRemark || (item.poRemark && item.poRemark !== group.billRemark ? item.poRemark : '');
+            const rawItemRemark = item.itemRemark || (item.poRemark && item.poRemark !== group.billRemark ? item.poRemark : '');
+            const itemRemark = cleanDirectPoRemark(rawItemRemark);
             addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku, itemRemark);
         });
 
@@ -1790,17 +1800,19 @@
             let itemsHtml = '<div class="space-y-1.5 flex-1">';
             group.items.slice(0, 3).forEach((item, iIdx) => {
                 const badge = iIdx === 0 ? getWarehouseBadge(group.warehouse) : '';
-                const itemRemarkText = item.itemRemark || (item.poRemark && item.poRemark !== group.billRemark ? item.poRemark : '');
+                const rawItemRemark = item.itemRemark || (item.poRemark && item.poRemark !== group.billRemark ? item.poRemark : '');
+                const itemRemarkText = cleanDirectPoRemark(rawItemRemark);
                 const itemRemarkHtml = itemRemarkText ? `<span class="block text-[11px] text-amber-800 font-normal pl-4 italic">↳ หมายเหตุ: ${esc(itemRemarkText)}</span>` : '';
                 itemsHtml += `<div><p class="text-sm font-semibold text-gray-800 leading-snug">${badge}<span class="text-gray-400 mr-1">${iIdx+1}.</span>${esc(item.product)}</p>${itemRemarkHtml}</div>`;
             });
             if(group.items.length > 3) itemsHtml += `<p class="text-xs text-gray-400 mt-1 font-medium italic">... และอีก ${group.items.length - 3} รายการ</p>`;
             itemsHtml += '</div>';
 
-            const billRemarkHtml = group.billRemark ? `
+            const cleanBillRemark = cleanDirectPoRemark(group.billRemark);
+            const billRemarkHtml = cleanBillRemark ? `
                 <div class="mt-2 text-xs bg-amber-50 text-amber-900 border border-amber-200/80 rounded-md px-2.5 py-1.5 flex items-start gap-1.5">
                     <i data-lucide="file-text" class="w-3.5 h-3.5 mt-0.5 text-amber-600 flex-shrink-0"></i>
-                    <span class="font-normal break-words"><strong class="font-semibold text-amber-950">หมายเหตุบิล:</strong> ${esc(group.billRemark)}</span>
+                    <span class="font-normal break-words"><strong class="font-semibold text-amber-950">หมายเหตุบิล:</strong> ${esc(cleanBillRemark)}</span>
                 </div>` : '';
 
             const deleteRequest = esc(JSON.stringify({
