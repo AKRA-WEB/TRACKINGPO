@@ -27,7 +27,7 @@ const currentVersionMatch = indexHtml.match(/const CURRENT_VERSION = ["']([^"']+
 assert.ok(currentVersionMatch, 'CURRENT_VERSION must be defined in index.html');
 const currentVersion = currentVersionMatch[1];
 assert.equal(currentVersion, versionJson.version, 'CURRENT_VERSION must match version.json');
-assert.equal(currentVersion, '20260831.02', 'Target version must be 20260831.02');
+assert.ok(currentVersion >= '20260831.02', 'Target version must be at least 20260831.02');
 console.log(`[PASS] 2. Version parity confirmed: ${currentVersion}`);
 
 // 4. Test Autocomplete search and auto-fill logic in simulated DOM

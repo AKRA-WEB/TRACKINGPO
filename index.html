@@ -232,6 +232,11 @@
                   </div>
               </div>
 
+              <div class="mb-6">
+                  <label for="create-po-remark" class="block text-sm font-semibold text-gray-700 mb-2">หมายเหตุทั้งบิล (ถ้ามี)</label>
+                  <input type="text" id="create-po-remark" class="input-field bg-white border-gray-200 focus:border-brand-blue" placeholder="ระบุรายละเอียดหรือเงื่อนไขรวมของบิล เช่น เงื่อนไขจัดส่ง, เบอร์ติดต่อ, หรือข้อความถึงผู้ขาย/คลัง...">
+              </div>
+
               <div class="bg-white rounded-xl border border-gray-200 mb-6 pb-2">
                   <h4 class="text-sm font-bold text-gray-800 p-4 border-b border-gray-100 bg-gray-50/50 rounded-t-xl">รายการสินค้า</h4>
                   <div class="p-3 sm:p-4">
@@ -271,7 +276,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260831.02";
+    const CURRENT_VERSION = "20260904.01";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -824,12 +829,14 @@
                     vendor: payload.vendor,
                     warehouse: payload.warehouse,
                     expectedDate: payload.expectedDate || '',
+                    remark: payload.remark || '',
                     items: (payload.items || []).map(it => ({
                         sku: it.sku || '',
                         product: it.product || it.productName,
                         quantity: Number(it.quantity || it.poQty || 0),
                         unit: it.unit || 'ชิ้น',
-                        expectedDate: payload.expectedDate || ''
+                        expectedDate: payload.expectedDate || '',
+                        remark: it.remark || ''
                     }))
                 }, token);
                 hideDataLoading();
@@ -842,13 +849,15 @@
                     vendor: payload.vendor,
                     warehouse: payload.warehouse,
                     expectedDate: payload.expectedDate || '',
+                    remark: payload.remark || '',
                     items: (payload.items || []).map(it => ({
                         id: it.uid || it.id,
                         sku: it.sku || '',
                         product: it.product || it.productName,
                         quantity: Number(it.quantity || it.poQty || 0),
                         unit: it.unit || 'ชิ้น',
-                        expectedDate: payload.expectedDate || ''
+                        expectedDate: payload.expectedDate || '',
+                        remark: it.remark || ''
                     }))
                 }, token);
                 hideDataLoading();
@@ -870,12 +879,14 @@
                         vendor: payload.vendor,
                         warehouse: payload.warehouse,
                         expectedDate: payload.expectedDate || '',
+                        remark: payload.remark || '',
                         items: (payload.items || []).map(it => ({
                             sku: it.sku || '',
                             product: it.product || it.productName,
                             quantity: Number(it.quantity || 0),
                             unit: it.unit || 'ชิ้น',
-                            expectedDate: payload.expectedDate || ''
+                            expectedDate: payload.expectedDate || '',
+                            remark: it.remark || ''
                         }))
                     }
                 }, token);
@@ -1421,10 +1432,13 @@
         const siblingItems = appData.prList.filter(p => (pr.prId && p.prId === pr.prId) || (pr.prNumber && p.prNumber === pr.prNumber));
         const itemsToPopulate = siblingItems.length > 0 ? siblingItems : [pr];
 
+        const remarkEl = document.getElementById('create-po-remark');
+        if (remarkEl) remarkEl.value = pr.remark || '';
+
         const container = document.getElementById('create-po-items-container');
         container.innerHTML = '';
         itemsToPopulate.forEach(item => {
-            addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku);
+            addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku, item.remark || '');
         });
 
         document.getElementById('modal-create-po').classList.remove('hidden');
@@ -1444,6 +1458,8 @@
                 (g.items && g.items.some(i => i.uid === query)) ||
                 poBillGroupKey(g) === query
             ));
+        } else if (target && typeof target === 'object') {
+            group = target;
         }
         if(!group) return;
 
@@ -1455,12 +1471,15 @@
         document.getElementById('create-po-vendor').value = group.vendor;
         document.getElementById('create-po-warehouse').value = group.warehouse;
         document.getElementById('create-po-expected-date').value = toDateInputValue(group.expectedDate || '');
+        const remarkEl = document.getElementById('create-po-remark');
+        if (remarkEl) remarkEl.value = group.billRemark || group.poRemark || '';
 
         // เติมข้อมูลรายการสินค้า
         const container = document.getElementById('create-po-items-container');
         container.innerHTML = '';
         group.items.forEach(item => {
-            addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku);
+            const itemRemark = item.itemRemark || (item.poRemark && item.poRemark !== group.billRemark ? item.poRemark : '');
+            addCreatePoItemRow(item.product, item.quantity, item.unit, item.sku, itemRemark);
         });
 
         // เก็บ UID เก่าไว้ในฟอร์มเพื่อส่งไปลบ
@@ -1495,6 +1514,9 @@
         delete form.dataset.refPrUid;
         delete form.dataset.poNumber;
 
+        const remarkEl = document.getElementById('create-po-remark');
+        if (remarkEl) remarkEl.value = '';
+
         document.getElementById('create-po-items-container').innerHTML = '';
         document.getElementById('create-po-expected-date').value = "";
         document.getElementById('btn-submit-direct-po').innerText = 'บันทึกสั่งซื้อ (Create PO)';
@@ -1510,29 +1532,35 @@
     }
 
     let createPoItemRowCounter = 0;
-    function addCreatePoItemRow(product = '', qty = '', unit = '', sku = '') {
+    function addCreatePoItemRow(product = '', qty = '', unit = '', sku = '', remark = '') {
         const container = document.getElementById('create-po-items-container');
         const div = document.createElement('div');
         const itemRowId = ++createPoItemRowCounter;
-        div.className = "create-po-item-row grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3rem] gap-3 relative bg-gray-50 rounded-xl border border-gray-200 p-3 mt-2 focus-within:z-50 sm:flex sm:items-end sm:gap-0 sm:bg-white sm:rounded-lg sm:p-0";
+        div.className = "create-po-item-row flex flex-col bg-gray-50 rounded-xl border border-gray-200 p-2 sm:p-0 sm:bg-white sm:rounded-lg mt-2 focus-within:z-50";
         div.innerHTML = `
-            <div class="col-span-3 min-w-0 relative sm:flex-1">
-                <label for="create-po-product-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">ชื่อสินค้า</label>
-                <input type="text" id="create-po-product-${itemRowId}" class="w-full min-h-[48px] px-3 py-3 text-base font-medium outline-none rounded-lg border border-gray-300 bg-white c-product sm:min-h-0 sm:px-4 sm:py-2.5 sm:text-sm sm:rounded-l-lg sm:rounded-r-none sm:border-0" placeholder="พิมพ์ชื่อสินค้า..." value="${esc(product)}" required autocomplete="off">
-                <input type="hidden" class="c-sku" value="${esc(sku)}">
-                <ul class="suggestion-box absolute z-[60] w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-72 overflow-y-auto hidden mt-1 divide-y divide-gray-50 top-full left-0"></ul>
+            <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3rem] gap-3 relative sm:flex sm:items-end sm:gap-0 sm:border-b sm:border-gray-100">
+                <div class="col-span-3 min-w-0 relative sm:flex-1">
+                    <label for="create-po-product-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">ชื่อสินค้า</label>
+                    <input type="text" id="create-po-product-${itemRowId}" class="w-full min-h-[48px] px-3 py-3 text-base font-medium outline-none rounded-lg border border-gray-300 bg-white c-product sm:min-h-0 sm:px-4 sm:py-2.5 sm:text-sm sm:rounded-tl-lg sm:rounded-none sm:border-0" placeholder="พิมพ์ชื่อสินค้า..." value="${esc(product)}" required autocomplete="off">
+                    <input type="hidden" class="c-sku" value="${esc(sku)}">
+                    <ul class="suggestion-box absolute z-[60] w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-72 overflow-y-auto hidden mt-1 divide-y divide-gray-50 top-full left-0"></ul>
+                </div>
+                <div class="min-w-0 sm:w-24 sm:border-l sm:border-gray-200">
+                    <label for="create-po-qty-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">จำนวน</label>
+                    <input type="number" id="create-po-qty-${itemRowId}" class="w-full min-h-[48px] px-3 py-3 text-base font-bold text-gray-700 outline-none text-center rounded-lg border border-gray-300 bg-white c-qty sm:min-h-0 sm:py-2.5 sm:text-sm sm:rounded-none sm:border-0" placeholder="0" min="1" value="${esc(qty)}" required>
+                </div>
+                <div class="min-w-0 sm:w-20 sm:border-l sm:border-gray-200">
+                    <label for="create-po-unit-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">หน่วย</label>
+                    <input type="text" id="create-po-unit-${itemRowId}" class="w-full min-h-[48px] px-2 py-3 text-base font-medium text-gray-600 bg-white outline-none text-center rounded-lg border border-gray-300 c-unit sm:min-h-0 sm:py-2.5 sm:text-sm sm:rounded-none sm:border-0 sm:bg-gray-50" placeholder="หน่วย" value="${esc(unit)}" readonly tabindex="-1">
+                </div>
+                <button type="button" onclick="this.closest('.create-po-item-row').remove()" aria-label="ลบรายการสินค้า" class="self-end min-h-[48px] min-w-[48px] flex items-center justify-center text-red-500 hover:text-red-700 px-3 py-2.5 font-bold transition rounded-lg border border-red-100 bg-red-50 sm:self-auto sm:min-h-0 sm:min-w-0 sm:rounded-none sm:rounded-tr-lg sm:border-0 sm:border-l sm:border-gray-200 sm:bg-transparent">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
             </div>
-            <div class="min-w-0 sm:w-24 sm:border-l sm:border-gray-200">
-                <label for="create-po-qty-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">จำนวน</label>
-                <input type="number" id="create-po-qty-${itemRowId}" class="w-full min-h-[48px] px-3 py-3 text-base font-bold text-gray-700 outline-none text-center rounded-lg border border-gray-300 bg-white c-qty sm:min-h-0 sm:py-2.5 sm:text-sm sm:rounded-none sm:border-0" placeholder="0" min="1" value="${esc(qty)}" required>
+            <div class="w-full px-3 py-1.5 bg-gray-50/80 flex items-center gap-2 rounded-b-lg border-t border-gray-200 sm:border-t-0">
+                <i data-lucide="message-square" class="w-3.5 h-3.5 text-gray-400 flex-shrink-0"></i>
+                <input type="text" id="create-po-item-remark-${itemRowId}" class="w-full text-xs text-gray-700 placeholder-gray-400 bg-transparent border-none outline-none c-item-remark focus:placeholder-gray-300" placeholder="หมายเหตุเฉพาะรายการนี้ (ถ้ามี เช่น สเปก, ล็อต, ของแถม)..." value="${esc(remark)}">
             </div>
-            <div class="min-w-0 sm:w-20 sm:border-l sm:border-gray-200">
-                <label for="create-po-unit-${itemRowId}" class="block sm:sr-only text-xs font-semibold text-gray-600 mb-1.5">หน่วย</label>
-                <input type="text" id="create-po-unit-${itemRowId}" class="w-full min-h-[48px] px-2 py-3 text-base font-medium text-gray-600 bg-white outline-none text-center rounded-lg border border-gray-300 c-unit sm:min-h-0 sm:py-2.5 sm:text-sm sm:rounded-none sm:border-0 sm:bg-gray-50" placeholder="หน่วย" value="${esc(unit)}" readonly tabindex="-1">
-            </div>
-            <button type="button" onclick="this.parentElement.remove()" aria-label="ลบรายการสินค้า" class="self-end min-h-[48px] min-w-[48px] flex items-center justify-center text-red-500 hover:text-red-700 px-3 py-2.5 font-bold transition rounded-lg border border-red-100 bg-red-50 sm:self-auto sm:min-h-0 sm:min-w-0 sm:rounded-none sm:rounded-r-lg sm:border-0 sm:border-l sm:border-gray-200 sm:bg-transparent">
-                <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
         `;
         container.appendChild(div);
         setupProductAutocompleteForPO(div.querySelector('.c-product'));
@@ -1546,6 +1574,8 @@
         const vendor = document.getElementById("create-po-vendor").value.trim();
         const warehouse = document.getElementById("create-po-warehouse").value;
         const expectedDate = document.getElementById("create-po-expected-date").value;
+        const remarkInput = document.getElementById("create-po-remark");
+        const remark = remarkInput ? remarkInput.value.trim() : "";
         const form = document.getElementById("form-create-po");
 
         if(!vendor || !warehouse) return showNotification("กรุณาเลือก Vendor และคลังสินค้าให้ครบถ้วน", "warning");
@@ -1557,9 +1587,11 @@
             const quantity = row.querySelector(".c-qty").value.trim();
             const sku = row.querySelector(".c-sku").value.trim();
             const unit = row.querySelector(".c-unit").value.trim();
+            const itemRemarkInput = row.querySelector(".c-item-remark");
+            const itemRemark = itemRemarkInput ? itemRemarkInput.value.trim() : "";
 
             if(!product || !quantity) hasError = true;
-            else items.push({ sku, product, quantity, unit });
+            else items.push({ sku, product, quantity, unit, remark: itemRemark });
         });
 
         if(hasError || items.length === 0) return showNotification("กรุณากรอกข้อมูลสินค้าให้ครบถ้วน", "warning");
@@ -1582,7 +1614,7 @@
             if (form.dataset.mode === "edit") {
                 const oldPoUids = JSON.parse(form.dataset.oldUids);
                 const poNumber = form.dataset.poNumber;
-                res = await apiAction("updatePO", { oldPoUids, vendor, warehouse, poNumber, expectedDate, items, prUid, refPrUid });
+                res = await apiAction("updatePO", { oldPoUids, vendor, warehouse, poNumber, expectedDate, remark, items, prUid, refPrUid });
                 if (res && res.success) {
                     const oldUidsSet = new Set(oldPoUids);
                     appData.pendingPOs = (appData.pendingPOs || []).filter(po => !oldUidsSet.has(po.uid));
@@ -1600,6 +1632,9 @@
                         product: it.product,
                         quantity: it.quantity,
                         unit: it.unit || "",
+                        billRemark: remark,
+                        itemRemark: it.remark || "",
+                        poRemark: it.remark ? (remark ? `${remark} | ${it.remark}` : it.remark) : remark,
                         remark: "",
                         status: "Pending GR",
                         displayStatus: "Pending GR",
@@ -1614,13 +1649,13 @@
             } else if (refPrRow) {
                 const prId = form.dataset.prId || form.dataset.prid || "";
                 res = await apiAction("approvePR", {
-                    prRowNumber: parseInt(refPrRow), prUid: prUid, prId: prId, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, items: items
+                    prRowNumber: parseInt(refPrRow), prUid: prUid, prId: prId, vendor: vendor, poNumber: "", warehouse: warehouse, expectedDate: expectedDate, remark: remark, items: items
                 });
                 if (res && res.success) {
                     closeCreatePoModal();
                 }
             } else {
-                res = await apiAction("createPO", { vendor, poNumber: "", warehouse, expectedDate, items });
+                res = await apiAction("createPO", { vendor, poNumber: "", warehouse, expectedDate, remark, items });
                 if (res && res.success) {
                     const directRef = res.directBillRefUid || ("DIRECT-" + Date.now());
                     const todayStr = new Date().toLocaleDateString("en-GB");
@@ -1637,6 +1672,9 @@
                         product: it.product,
                         quantity: it.quantity,
                         unit: it.unit || "",
+                        billRemark: remark,
+                        itemRemark: it.remark || "",
+                        poRemark: it.remark ? (remark ? `${remark} | ${it.remark}` : it.remark) : remark,
                         remark: "",
                         status: "Pending GR",
                         displayStatus: "Pending GR",
@@ -1665,8 +1703,20 @@
       if(appData.pendingPOs) {
           appData.pendingPOs.forEach(po => {
             const key = poBillGroupKey(po);
-            if (!groups[key]) groups[key] = { key: key, poId: po.poId || po.po_id || '', refPrUid: usableBillRefUid(po.refPrUid), poNumber: po.poNumber, vendor: po.vendor, poDate: po.poDate, warehouse: po.warehouse, expectedDate: po.expectedDate || '', items: [] };
+            if (!groups[key]) groups[key] = {
+              key: key,
+              poId: po.poId || po.po_id || '',
+              refPrUid: usableBillRefUid(po.refPrUid),
+              poNumber: po.poNumber,
+              vendor: po.vendor,
+              poDate: po.poDate,
+              warehouse: po.warehouse,
+              expectedDate: po.expectedDate || '',
+              billRemark: po.billRemark || po.poRemark || '',
+              items: []
+            };
             if (!groups[key].expectedDate && po.expectedDate) groups[key].expectedDate = po.expectedDate;
+            if (!groups[key].billRemark && (po.billRemark || po.poRemark)) groups[key].billRemark = po.billRemark || po.poRemark;
             groups[key].items.push(po);
           });
       }
@@ -1692,8 +1742,9 @@
             if(statusFilter === 'Pending GR' && (hasOverdue || hasDraft || hasPendingReview)) return false;
 
             if(search) {
-                const matchItem = group.items.some(i => i.product.toLowerCase().includes(search));
-                if(!group.vendor.toLowerCase().includes(search) && !(group.poNumber || '').toLowerCase().includes(search) && !matchItem) return false;
+                const matchItem = group.items.some(i => i.product.toLowerCase().includes(search) || (i.itemRemark && i.itemRemark.toLowerCase().includes(search)) || (i.poRemark && i.poRemark.toLowerCase().includes(search)));
+                const matchRemark = (group.billRemark || '').toLowerCase().includes(search);
+                if(!group.vendor.toLowerCase().includes(search) && !(group.poNumber || '').toLowerCase().includes(search) && !matchItem && !matchRemark) return false;
             }
             return true;
         });
@@ -1739,10 +1790,18 @@
             let itemsHtml = '<div class="space-y-1.5 flex-1">';
             group.items.slice(0, 3).forEach((item, iIdx) => {
                 const badge = iIdx === 0 ? getWarehouseBadge(group.warehouse) : '';
-                itemsHtml += `<p class="text-sm font-semibold text-gray-800 leading-snug">${badge}<span class="text-gray-400 mr-1">${iIdx+1}.</span>${esc(item.product)}</p>`;
+                const itemRemarkText = item.itemRemark || (item.poRemark && item.poRemark !== group.billRemark ? item.poRemark : '');
+                const itemRemarkHtml = itemRemarkText ? `<span class="block text-[11px] text-amber-800 font-normal pl-4 italic">↳ หมายเหตุ: ${esc(itemRemarkText)}</span>` : '';
+                itemsHtml += `<div><p class="text-sm font-semibold text-gray-800 leading-snug">${badge}<span class="text-gray-400 mr-1">${iIdx+1}.</span>${esc(item.product)}</p>${itemRemarkHtml}</div>`;
             });
             if(group.items.length > 3) itemsHtml += `<p class="text-xs text-gray-400 mt-1 font-medium italic">... และอีก ${group.items.length - 3} รายการ</p>`;
             itemsHtml += '</div>';
+
+            const billRemarkHtml = group.billRemark ? `
+                <div class="mt-2 text-xs bg-amber-50 text-amber-900 border border-amber-200/80 rounded-md px-2.5 py-1.5 flex items-start gap-1.5">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5 mt-0.5 text-amber-600 flex-shrink-0"></i>
+                    <span class="font-normal break-words"><strong class="font-semibold text-amber-950">หมายเหตุบิล:</strong> ${esc(group.billRemark)}</span>
+                </div>` : '';
 
             const deleteRequest = esc(JSON.stringify({
                 poId: group.poId || group.items?.[0]?.poId || '',
@@ -1764,7 +1823,7 @@
 
             card.innerHTML = `
                 ${statusBadgeHtml}
-                <div class="flex justify-between items-start mb-4">
+                <div class="flex justify-between items-start mb-2">
                     <div class="flex-1 pr-3">
                         <div class="flex items-center mb-1.5">
                             <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${esc(group.poNumber || 'ไม่มีเลข PO')}</p>
@@ -1777,6 +1836,7 @@
                         ${expectedBadge}
                     </div>
                 </div>
+                ${billRemarkHtml}
 
                 <div class="mt-auto pt-3 border-t border-gray-50 flex justify-between items-end">
                     <div class="bg-white border border-gray-200 px-2 py-1.5 rounded flex items-center gap-1.5 max-w-[60%] shadow-sm">

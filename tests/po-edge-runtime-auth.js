@@ -14,8 +14,8 @@ function transpileTsToJs(tsCode) {
     .replace(/^import\b.*$/gm, '// $&')
     .replace(/^type\s+[A-Za-z0-9_]+\s*=.*$/gm, '// $&')
     .replace(/declare\s+const\s+Deno[\s\S]*?;\n\};/g, '// Deno')
-    .replace(/new\s+Map<[^>\n]+>\(\)/g, 'new Map()')
-    .replace(/new\s+Set<[^>\n]+>\(\)/g, 'new Set()')
+    .replace(/new\s+Map<[^(\n]+>\(\)/g, 'new Map()')
+    .replace(/new\s+Set<[^(\n]+>\(\)/g, 'new Set()')
     .replace(/\bas\s+[A-Za-z0-9_<>\[\]]+/g, '')
     .replace(/interface\s+[A-Za-z0-9_]+\s*\{[\s\S]*?\}/g, '')
     .replace(/\):\s*Promise<\{[\s\S]*?\}\s*>\s*\{/g, ') {')
@@ -67,9 +67,27 @@ function createEdgeRuntime(mockDbState = {}) {
     TextEncoder: TextEncoder,
     TextDecoder: TextDecoder,
     crypto: globalThis.crypto,
+    verifyMainJwt: async (token) => {
+      if (!token || token === 'invalid') return null;
+      if (context._mockUserVerification && context._mockUserVerification.valid === false) return null;
+      const user = (context._mockUserVerification && context._mockUserVerification.user) || { id: 'usr1', roles: ['ADMIN'], perms: {} };
+      const hasAppPo = user.perms && Object.prototype.hasOwnProperty.call(user.perms, 'app-po');
+      const isLegacy = user.tokenVersion === 1 || (!hasAppPo && user.tokenVersion !== 2);
+      return {
+        id: user.id,
+        name: user.name || user.id,
+        roles: user.roles,
+        perms: user.perms || null,
+        tokenVersion: isLegacy ? 1 : 2,
+        sessionVersion: isLegacy ? null : 1,
+        authorizationRevision: isLegacy ? null : 'rev1',
+        exp: Math.floor(Date.now() / 1000) + 3600
+      };
+    },
     Deno: {
       env: {
         get: (k) => {
+          if (k === 'MAIN_JWT_SECRET') return 'test-secret';
           if (k === 'MAIN_VERIFY_URL') return 'https://mock-main.app/verify';
           if (k === 'SUPABASE_URL') return 'https://mock-sb.app';
           if (k === 'SUPABASE_SERVICE_ROLE_KEY') return 'mock-key';
@@ -103,7 +121,8 @@ function createEdgeRuntime(mockDbState = {}) {
         }
         return {
           ok: true,
-          json: async () => ({ success: true, result: 'mock_rpc_ok' })
+          headers: new Headers(),
+          json: async () => ({ success: true, valid: true, result: 'mock_rpc_ok' })
         };
       }
       if (urlStr.includes('/rest/v1/')) {
