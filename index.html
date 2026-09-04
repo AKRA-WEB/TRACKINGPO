@@ -276,7 +276,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script>
-    const CURRENT_VERSION = "20260904.01";
+    const CURRENT_VERSION = "20260904.02";
     async function checkAppVersion() {
         try {
             const res = await fetch('version.json?t=' + Date.now());
@@ -663,7 +663,7 @@
     function cleanDirectPoRemark(text) {
         if (!text) return '';
         return String(text)
-            .replace(/(?:^|\b)(?:(?:หมายเหตุ\s*(?:PO)?|PO)\s*[:\-–—]\s*)?(?:Direct\s*PO\s*Web\s*App|Direct\s*PO\s*\(Edited\)|Direct\s*PO|DirectPO|Ref\s*PR)(?:\b|$)/gi, '')
+            .replace(/(?:^|\b)(?:(?:หมายเหตุ\s*(?:PO)?|PO)\s*[:\-–—\s]\s*)?(?:Direct\s*PO\s*Web\s*App|Direct\s*PO\s*\(Edited\)|Direct\s*PO|DirectPO|Ref\s*PR)(?:\b|$)/gi, '')
             .replace(/^[\s:\-|/()]+|[\s:\-|/()]+$/g, '')
             .replace(/\s{2,}/g, ' ')
             .trim();
